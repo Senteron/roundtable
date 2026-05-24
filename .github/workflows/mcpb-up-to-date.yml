@@ -50,6 +50,14 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install runtime dependencies
+        # mcpb/build.sh imports roundtable.mcp_server to read
+        # TOOL_DESCRIPTION at bundle time. That import pulls in mcp,
+        # pydantic, etc. Install the runtime deps (not the full dev
+        # set — pytest etc. aren't needed here) so the build can
+        # complete in CI.
+        run: pip install mcp pydantic
+
       - name: Check bundle freshness
         run: ./scripts/check_mcpb_freshness.sh
 

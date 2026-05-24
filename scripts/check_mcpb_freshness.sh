@@ -51,8 +51,14 @@ if [[ -f "$ARTIFACT.sha256" ]]; then
 fi
 
 # Run the build (writes to $ROOT/dist/roundtable-${VERSION}.mcpb).
-if ! "$ROOT/mcpb/build.sh" >/dev/null 2>&1; then
+# Capture output to a temp log so a failure can be diagnosed; without
+# this, CI shows only "build failed" with no hint why.
+BUILD_LOG="$WORK/build.log"
+if ! "$ROOT/mcpb/build.sh" >"$BUILD_LOG" 2>&1; then
   echo "✘ ./mcpb/build.sh failed; cannot check freshness." >&2
+  echo >&2
+  echo "Build output:" >&2
+  cat "$BUILD_LOG" >&2
   cp "$COMMITTED_BACKUP" "$ARTIFACT"
   [[ -n "$COMMITTED_SHA_BACKUP" ]] && cp "$COMMITTED_SHA_BACKUP" "$ARTIFACT.sha256"
   exit 1
