@@ -30,14 +30,6 @@ answer in light of the others, repeat until convergence. Done by hand it
 works well. Roundtable lets Claude run the loop itself without you
 shuffling text between browser tabs.
 
-## How it differs from Senteron
-
-[Senteron](https://github.com/Senteron/senteron) is a CLI/web tool that
-runs a full peer-review pipeline with synthesis. Roundtable is the
-MCP-shaped subset: parallel dispatch only, no synthesis, no persistence,
-designed for Claude as the orchestrating consumer rather than a human at
-a terminal.
-
 ## Installation
 
 The current installable `.mcpb` bundle is committed to
@@ -61,14 +53,13 @@ continues to run, which keeps the install dialog optional and lets
 you bring up the bundle with whichever subset of providers you have
 keys for.
 
-> **Note on `.env` files:** Unlike its sibling [Senteron](https://github.com/Senteron/senteron),
-> Roundtable v0.1 does **not** read API keys from a `.env` file in
-> your home directory or in a configured directory picker. The
-> bundle launches with a sanitized environment supplied by Claude
-> Desktop; only values you type into the Roundtable install dialog
-> reach the server. Putting your keys in a project `.env` (even a
-> Roundtable repo `.env`) will not work — the server never sees
-> them. A `.env` file picker like Senteron's is on the v0.2
+> **Note on `.env` files:** Roundtable v0.1 does **not** read API
+> keys from a `.env` file in your home directory or in a configured
+> directory picker. The bundle launches with a sanitized environment
+> supplied by Claude Desktop; only values you type into the
+> Roundtable install dialog reach the server. Putting your keys in a
+> project `.env` (even a Roundtable repo `.env`) will not work — the
+> server never sees them. A `.env` file picker is on the v0.2
 > roadmap.
 
 If real dispatch fails with an obviously-wrong error message like

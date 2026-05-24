@@ -11,12 +11,10 @@ dispatch a prompt to a panel of other LLMs in parallel, return their raw
 answers. Claude orchestrates the deliberation loop in conversation;
 Roundtable does not synthesize, judge, vote, or persist.
 
-This is deliberately a different product from Senteron. Senteron is a
-CLI/web tool with a full peer-review pipeline, runs persistence, and a
-synthesis stage. Roundtable is the MCP-shaped subset designed for
+Roundtable is deliberately a narrow, MCP-shaped tool designed for
 Claude-as-orchestrator. If a feature request would push Roundtable
-toward Senteron's shape (persistence, synthesis, judge, web UI), it
-probably belongs in Senteron instead.
+toward a heavier shape (persistence, synthesis, judge, web UI), it
+probably belongs in a different product instead.
 
 ## Core invariants
 
@@ -29,9 +27,10 @@ metadata-only telemetry log (timestamps, model names, latency, cost,
 errors) — never prompt or answer content.
 
 This invariant simplifies the privacy story dramatically: with no file,
-there is no leak surface, and the redaction machinery Senteron needs
-becomes unnecessary here. Do not weaken this without an explicit
-discussion of what the alternative privacy model looks like.
+there is no leak surface, and the redaction machinery a persistent
+tool would need becomes unnecessary here. Do not weaken this without
+an explicit discussion of what the alternative privacy model looks
+like.
 
 ### Stateless dispatch
 
@@ -112,8 +111,8 @@ Both strings are part of the API contract (D5 in
   (`?token=…`, `?api_key=…`, `?key=…`). Only `Authorization: Bearer …`
   or provider-SDK-managed auth.
 - **No persistence creep.** If a feature seems to require writing
-  something to disk, stop and ask whether the feature belongs in
-  Roundtable or in Senteron.
+  something to disk, stop and ask whether the feature actually
+  belongs in Roundtable at all.
 - **Tool description is part of the API.** The text Claude reads when
   deciding whether and how to invoke the tool is as important as the
   function signature. Treat changes to it with the same care as schema
@@ -132,9 +131,9 @@ Both strings are part of the API contract (D5 in
 
 The architecture (stateless dispatch, no synthesis, no vote, Claude as
 orchestrator-participant, single tool) was derived from empirical work
-on Senteron's existing pipeline. The decisions worth knowing:
+on a prior peer-review pipeline. The decisions worth knowing:
 
-- The corpus showed Senteron's existing convergence-vote field was
+- The corpus showed that pipeline's convergence-vote field was
   performative (99.3% stop, 32% exact-phrase boilerplate). Roundtable
   has no vote.
 - Live tests with Opus 4.7 as orchestrator showed it could hold a
@@ -321,9 +320,8 @@ The review checks for:
   git author trailer is fine; *content* references are not).
 - **Personal prompt or answer content** from the user's own
   workflows, especially anything that hints at career, healthcare,
-  finances, family, employer, or relationships. The Senteron corpus
-  data and any prompt excerpts from it fall under this rule by
-  default.
+  finances, family, employer, or relationships. Any prior-corpus
+  data and prompt excerpts from it fall under this rule by default.
 - **Secrets**: API keys, tokens, bearer values, private URLs, OAuth
   redirect URIs, signed-URL tokens, model-provider account IDs.
   Even partial fragments — assume rotation is required if any
