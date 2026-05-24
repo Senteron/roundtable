@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 from mcp import types
@@ -30,6 +31,10 @@ from .dispatcher import dispatch
 from .providers.base import Provider
 from .providers.fake import FakeProvider
 from .schemas import RoundInput
+
+# Real provider classes are imported lazily inside _resolve_panel
+# so the server can boot without the SDKs installed (e.g., in a
+# minimal test environment where only FakeProvider is needed).
 
 log = logging.getLogger("roundtable.mcp_server")
 
@@ -146,24 +151,107 @@ INPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+# Known real-provider model IDs and their corresponding env-var keys.
+# Used to detect when a caller-supplied model name should be wired to
+# a real SDK rather than FakeProvider.
+_REAL_PROVIDER_MODELS: dict[str, str] = {
+    "gpt-4o": "OPENAI_API_KEY",
+    "gemini-2.5-pro": "GOOGLE_API_KEY",
+    "deepseek-chat": "DEEPSEEK_API_KEY",
+}
+
+# Default panel composition when the caller passes models=None.
+# Mirrors docs/decisions.md §8.
+_DEFAULT_PANEL_MODELS: list[str] = [
+    "gpt-4o",
+    "gemini-2.5-pro",
+    "deepseek-chat",
+]
+
+
+def _make_real_provider(model: str) -> Provider:
+    """Lazy-import and construct the real provider for a given model.
+
+    Each provider's __init__ reads its API key from the env var and
+    raises if missing. The caller is responsible for verifying the
+    key is present before calling this.
+    """
+    if model == "gpt-4o":
+        from .providers.openai import OpenAIProvider
+
+        return OpenAIProvider(model=model)
+    if model == "gemini-2.5-pro":
+        from .providers.google import GoogleProvider
+
+        return GoogleProvider(model=model)
+    if model == "deepseek-chat":
+        from .providers.deepseek import DeepSeekProvider
+
+        return DeepSeekProvider(model=model)
+    raise ValueError(f"no real provider registered for model {model!r}")
+
+
 def _resolve_panel(models: list[str] | None) -> list[Provider]:
     """Resolve a model list to a panel of Provider instances.
 
-    v0.1 default: a FakeProvider placeholder set, since real
-    providers (OpenAI/Google/DeepSeek) land in P4. The `models`
-    override is honored: callers can pass arbitrary model names and
-    get a FakeProvider for each. This is what makes integration
-    tests work without API keys.
+    Default panel (when models=None): instantiate the three real
+    providers from _DEFAULT_PANEL_MODELS whose API keys are present
+    in the environment. If a key is missing, that slot falls back to
+    a FakeProvider and a warning is written to stderr so the
+    operator notices. If no real keys are configured at all, the
+    entire default panel is FakeProvider — useful for development
+    but logged loudly.
+
+    Explicit override (when models is a list): for each name, if it
+    matches a known real-provider model and the corresponding key
+    is set, instantiate the real provider; otherwise FakeProvider.
+    This lets integration tests pass models like ["fake-a"] without
+    needing API keys, while still routing "gpt-4o" through the real
+    SDK when keys are configured.
     """
-    if models is None:
-        # Until P4 lands, the default panel is a placeholder fake set
-        # so the server is exercisable end-to-end.
-        return [
-            FakeProvider(name="fake-a", behavior="echo"),
-            FakeProvider(name="fake-b", behavior="echo"),
-            FakeProvider(name="fake-c", behavior="echo"),
-        ]
-    return [FakeProvider(name=m, behavior="echo") for m in models]
+    requested = models if models is not None else _DEFAULT_PANEL_MODELS
+    panel: list[Provider] = []
+
+    for model in requested:
+        env_key = _REAL_PROVIDER_MODELS.get(model)
+        if env_key is None:
+            # Unknown model name — treat as a fake fixture.
+            panel.append(FakeProvider(name=model, behavior="echo"))
+            continue
+
+        if not os.environ.get(env_key):
+            log.warning(
+                "%s requested but %s is not set; using FakeProvider. "
+                "Set %s to enable real dispatch.",
+                model,
+                env_key,
+                env_key,
+            )
+            panel.append(FakeProvider(name=model, behavior="echo"))
+            continue
+
+        try:
+            panel.append(_make_real_provider(model))
+        except ImportError as e:
+            log.error(
+                "SDK for %s is not installed (%s); falling back to "
+                "FakeProvider. This indicates a packaging bug — "
+                "the bundle's mcpb/pyproject.toml should include the "
+                "required SDK.",
+                model,
+                e,
+            )
+            panel.append(FakeProvider(name=model, behavior="echo"))
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "failed to construct real provider for %s (%s); "
+                "falling back to FakeProvider",
+                model,
+                e,
+            )
+            panel.append(FakeProvider(name=model, behavior="echo"))
+
+    return panel
 
 
 def build_server() -> Server:
