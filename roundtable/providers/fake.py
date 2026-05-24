@@ -11,7 +11,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from .base import ProviderResponse
+from .base import InvalidProviderOutput, ProviderResponse
 
 
 @dataclass
@@ -23,6 +23,8 @@ class FakeProvider:
         - "timeout": sleeps longer than any reasonable timeout to
           force asyncio.TimeoutError downstream.
         - "error": raises RuntimeError(error_message).
+        - "invalid_output": raises InvalidProviderOutput, which the
+          dispatcher maps to ErrorClass.INVALID_OUTPUT.
         - "fixed": returns fixed_response verbatim.
     """
 
@@ -49,6 +51,9 @@ class FakeProvider:
         elif self.behavior == "error":
             await asyncio.sleep(self.delay_seconds)
             raise RuntimeError(self.error_message)
+        elif self.behavior == "invalid_output":
+            await asyncio.sleep(self.delay_seconds)
+            raise InvalidProviderOutput(self.error_message)
         elif self.behavior == "echo":
             await asyncio.sleep(self.delay_seconds)
             text = f"<{self.name}> {prompt[:200]}"

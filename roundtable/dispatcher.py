@@ -20,7 +20,7 @@ import asyncio
 import time
 
 from .framing import render_round_1_plus
-from .providers.base import Provider, ProviderResponse
+from .providers.base import InvalidProviderOutput, Provider, ProviderResponse
 from .schemas import (
     ErrorClass,
     ModelError,
@@ -90,6 +90,8 @@ async def _call_one(
         return response, None, time.monotonic() - start
     except asyncio.TimeoutError:
         return None, ErrorClass.TIMEOUT, time.monotonic() - start
+    except InvalidProviderOutput:
+        return None, ErrorClass.INVALID_OUTPUT, time.monotonic() - start
     except Exception:
         return None, ErrorClass.API_ERROR, time.monotonic() - start
 
