@@ -134,4 +134,119 @@ on Senteron's existing pipeline. The decisions worth knowing:
   parallel attempts (not verdicts) and explicitly instruct each model
   to revise its own answer rather than synthesize.
 
-See `docs/design.md` (to be written) for the longer version.
+See [docs/design.md](docs/design.md) for the v0.1 contract and
+implementation sequence; [docs/decisions.md](docs/decisions.md) for the
+*why* behind each choice; [docs/handoff.md](docs/handoff.md) for a fresh
+agent's read order.
+
+## Working practices
+
+These are the operating rules for any agent or human working in this
+repo. They are tailored to Roundtable; many general "vibe coding"
+practices (UI, auth, queues, migrations) don't apply because Roundtable
+has no UI, no users-of-its-own, no persistence, and no async surface
+beyond `asyncio.gather`.
+
+### Prime directives
+
+1. **Reproduce before you fix.** A failing test, a stack trace, a
+   captured MCP request/response — never start debugging without a
+   signal you can rerun. For Roundtable, "reproduce" usually means a
+   pytest case against `FakeProvider`, not a live API call.
+2. **Commit before risk.** Confirm a clean tree (`git status`) before
+   non-trivial work. Before risky ops (manifest changes, version bumps,
+   dependency upgrades, `.mcpb` rebuilds), make an explicit checkpoint
+   commit so rollback is one command.
+3. **Done means verified.** A summary without `pytest` output is a
+   guess. State which tests ran and which were skipped.
+4. **Stay in the slice.** No opportunistic refactors, renames, or
+   "while I'm here" cleanup of adjacent code. [docs/design.md §8](docs/design.md)
+   defines one commit per step; resist bundling unrelated changes.
+5. **Never `--force` push to `main`.** Never `--no-verify` to skip
+   hooks. Never `rm -rf` as a shortcut. Use `git revert` over history
+   rewrites on shared branches.
+
+### The slice loop
+
+For every meaningful change:
+
+1. **Map (read-only).** Inspect callers, tests, the relevant section of
+   [docs/design.md](docs/design.md) or [docs/decisions.md](docs/decisions.md).
+   Don't edit until you can name the slice and the verification command.
+2. **Plan.** Smallest user-visible change. Verification command chosen
+   *before* editing. If bigger than ~5 files, split it.
+3. **Implement with local sympathy.** Match the existing module shape
+   in [roundtable/](roundtable/) and test style in [tests/](tests/).
+4. **Verify.** Narrowest unit test first; widen only if shared behavior
+   changed. For live-provider changes, run the gated `pytest -m live`
+   marker, not the default suite.
+5. **Close.** State what changed, where, how verified, what's risky.
+
+### Stop and ask before
+
+- Changing the **round-1+ framing prompt** text. It's the load-bearing
+  string of the system ([docs/decisions.md §6](docs/decisions.md)) and
+  changes are a minor version bump + CHANGELOG entry.
+- Changing the **tool description** Claude reads in [mcpb/manifest.json](mcpb/manifest.json).
+  Same versioning discipline as the framing prompt.
+- Changing the **tool input/output schema** in `roundtable/schemas.py`
+  (when it exists) — this is the public contract.
+- Adding **any form of persistence** (files, SQLite, cache dirs, log
+  files containing prompts or answers). The no-persistence invariant
+  is load-bearing; see [docs/decisions.md §3](docs/decisions.md).
+- Adding a **runtime dependency** beyond what [pyproject.toml](pyproject.toml)
+  already declares. Each new dep is lockfile churn, audit surface, and
+  bundle-size impact.
+- Adding a **new MCP tool** beyond `roundtable_round`. [docs/design.md §2.2](docs/design.md)
+  is explicit that there is no health, list, or get tool.
+- Adding **retries** inside a round. N-1 tolerance is the contract;
+  the next round naturally re-attempts.
+- Thrashing **3+ times** on the same failure without new evidence.
+  Summarize the attempts and ask.
+
+### Fast feedback
+
+- Prefer `pytest tests/unit/` (fast, no network, no subprocess) during
+  the slice loop. Reserve `tests/integration/` for the end of a slice
+  and `pytest -m live` for changes that touch a real provider.
+- Use `FakeProvider` for anything that doesn't require a real model.
+  Hitting real APIs from the inner dev loop wastes credits and
+  introduces flakiness.
+- Use `pytest -x -k <name>` to stop on first failure with a substring
+  match — far faster than the full suite.
+
+### Definition of done
+
+Before saying "done":
+
+- [ ] `pytest tests/unit/` passes.
+- [ ] `pytest tests/integration/` passes (if the change touches the
+      MCP server, dispatcher, or framing).
+- [ ] If [roundtable/](roundtable/) was touched: `.mcpb` bundle
+      rebuilt and `dist/roundtable-<version>.mcpb` + `.sha256` staged.
+- [ ] If the framing prompt or tool description changed: minor version
+      bump in *both* [pyproject.toml](pyproject.toml) and
+      [mcpb/manifest.json](mcpb/manifest.json), and a CHANGELOG entry.
+- [ ] `git diff` reviewed for: secrets, `.env*` content, debug prints,
+      scratch files, accidental formatting on unrelated files.
+- [ ] No skipped tests without an explanation, no `# type: ignore`
+      without a reason.
+
+### Closing template
+
+> **Changed.** One sentence; concrete files and functions.
+> **Verified.** Commands run, what passed, what was skipped and why.
+> **Risk.** Honest residual uncertainty.
+> **Next step.** The single obvious follow-up, or stop.
+
+If verification failed, report the failing command and the smallest
+next diagnostic step. Don't call it done.
+
+### Context discipline
+
+- New unrelated task = new session. Don't stack a manifest change on
+  top of a debugging session and a docs edit.
+- When referencing code, point at paths and line ranges, not vibes.
+- Don't load `dist/*.mcpb` (binary), `.venv/`, or generated artifacts
+  into context. [.gitignore](.gitignore) blocks most of these; the
+  bundle artifacts are intentionally committed but shouldn't be read.
