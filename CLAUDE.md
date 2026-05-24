@@ -227,6 +227,76 @@ For every meaningful change:
 - Use `pytest -x -k <name>` to stop on first failure with a substring
   match — far faster than the full suite.
 
+### Independent pre-commit review for major changes
+
+**Rule.** Before the **final commit** of a major change, the implementing
+agent MUST launch a **parallel, independent code review** and address
+its findings (or explicitly defer them with a written rationale) before
+committing. This is a precondition for "done"; skipping it is a
+process violation, not a judgement call.
+
+**What counts as a major change** (review required):
+
+- Completing a numbered phase (P0, P1, P1.5, P2, … as enumerated in
+  [docs/design.md](docs/design.md) and [docs/review-concerns-plan.md](docs/review-concerns-plan.md)).
+- Any change to the **public schema** in `roundtable/schemas.py`.
+- Any change to the **round-1+ framing prompt** or the **tool
+  description** in [mcpb/manifest.json](mcpb/manifest.json) (the two
+  load-bearing strings from D5).
+- Any change to the **dispatcher contract** (success/failure semantics,
+  N-1 tolerance behavior, timeout handling).
+- Any change that introduces a new **runtime dependency** or a new
+  **MCP tool**.
+- Any PR with more than ~10 changed files or ~500 changed lines.
+
+**What does NOT require this review:** doc-only edits, test-only
+additions that don't change production code, single-file bugfixes
+under ~50 lines, dependency lockfile bumps, and the routine `.mcpb`
+rebuild that accompanies a code change already reviewed.
+
+**How to run the review.** Use the `Agent` tool with
+`subagent_type: general-purpose` (or the `code-reviewer` agent if one
+is registered in this repo). Independence is the point — the reviewer
+must be a fresh agent with no prior knowledge of this session's
+reasoning, attempts, or tradeoffs. **Do not** brief it with your
+conclusions; brief it with the task that was supposed to be done and
+let it judge the diff against the docs.
+
+Prompt template for the review subagent:
+
+> Independent pre-commit review of the staged changes on branch
+> `BRANCH_NAME` for Roundtable. The change is supposed to deliver
+> **ONE_SENTENCE_SCOPE** per [docs/design.md](docs/design.md) and
+> [docs/review-concerns-plan.md](docs/review-concerns-plan.md).
+>
+> Read `git diff main...HEAD` (and any uncommitted changes via
+> `git status -s` + `git diff`). Then judge the diff against the
+> documented contract, the invariants in [CLAUDE.md](CLAUDE.md)
+> (no persistence, stateless dispatch, N-1 tolerance, network-layer
+> timeouts), and the relevant decisions in [docs/decisions.md](docs/decisions.md).
+>
+> Report findings by severity (high / medium / low) with file:line
+> citations. Specifically check for: docs/implementation mismatches,
+> unreachable code paths, schema fields that the dispatcher cannot
+> populate, missing end-to-end tests for new behavior, and version
+> bump / `.mcpb` rebuild discipline.
+>
+> Do NOT propose refactors outside the change's scope. Under 800 words.
+
+**Handling the findings.** For each high or medium finding, either
+(a) fix it in the same change before committing, or (b) record an
+explicit deferral in the commit body or a follow-up issue with the
+rationale ("deferred to P? because …"). Low findings can be noted
+without action. **Do not commit if a high-severity finding is
+unaddressed and undeferred.**
+
+This rule exists because P1 shipped with a documented-but-unimplemented
+D1 contract (dispatcher always passed `failed=[]` to
+`render_round_1_plus`), and an independent reviewer caught it
+immediately while the implementing agent's tests had passed. A
+parallel review at phase boundaries is cheap insurance against
+exactly that failure mode.
+
 ### Definition of done
 
 Before saying "done":
@@ -239,6 +309,9 @@ Before saying "done":
 - [ ] If the framing prompt or tool description changed: minor version
       bump in *both* [pyproject.toml](pyproject.toml) and
       [mcpb/manifest.json](mcpb/manifest.json), and a CHANGELOG entry.
+- [ ] If this is a major change per **Independent pre-commit review**
+      above: review launched, findings addressed or deferred with
+      rationale, before the final commit.
 - [ ] `git diff` reviewed for: secrets, `.env*` content, debug prints,
       scratch files, accidental formatting on unrelated files.
 - [ ] No skipped tests without an explanation, no `# type: ignore`
