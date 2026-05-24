@@ -26,6 +26,7 @@ from .schemas import (
     ModelError,
     ModelResponse,
     PriorAnswer,
+    PriorFailure,
     RoundInput,
     RoundOutput,
 )
@@ -41,21 +42,21 @@ _RESPONSE_RESERVE_TOKENS = 4_000
 def _build_prompt(
     user_prompt: str,
     prior_answers: list[PriorAnswer] | None,
+    prior_failures: list[PriorFailure] | None,
     current_round: int,
 ) -> str:
-    if not prior_answers:
+    """Round 0 sends the raw prompt; round 1+ uses the framing
+    template. The decision is based purely on the presence of any
+    prior-round entries (success or failure) — no truthy-string
+    heuristics on the answer field.
+    """
+    if not prior_answers and not prior_failures:
         return user_prompt
 
-    successful = [a for a in prior_answers if a.answer]
-    # Round 1+ with no prior failures still uses the framing template.
-    # The caller is responsible for not passing failed-but-zero
-    # PriorAnswers; if all are empty, the dispatcher upstream still
-    # produces a render but downstream models will see an empty
-    # PANEL ANSWERS section.
     return render_round_1_plus(
         prompt=user_prompt,
-        successful=successful,
-        failed=[],
+        successful=prior_answers or [],
+        failed=[(f.model, f.error_class) for f in (prior_failures or [])],
         current_round=current_round,
     )
 
@@ -107,6 +108,7 @@ async def dispatch(
     prompt = _build_prompt(
         user_prompt=inputs.prompt,
         prior_answers=inputs.prior_answers,
+        prior_failures=inputs.prior_failures,
         current_round=current_round,
     )
 
