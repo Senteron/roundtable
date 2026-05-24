@@ -10,6 +10,31 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Initial project scaffolding: repo structure, license, README, manifest,
   package metadata, contributor guidance.
+- Pre-implementation decision record: [docs/review-concerns-plan.md](docs/review-concerns-plan.md)
+  with binding decisions D1–D9 and the P0–P5 implementation sequence.
+- Empirical evidence audit trail: [docs/empirical-evidence.md](docs/empirical-evidence.md).
+- Working practices for agents: [CLAUDE.md](CLAUDE.md) "Independent
+  pre-commit review for major changes" and "Privacy review before
+  anything reaches GitHub" rules.
+- Schemas, framing, dispatcher, FakeProvider, MCP server, manifest
+  entry-point alignment — P0 through P2 plus P1.5 (D1 contract closure)
+  per the plan.
+- 53 unit + integration tests, no network, ~5s.
+
+### Known limitations (v0.1 preview)
+
+- **Default panel returns placeholder echoes, not real model responses.**
+  `_resolve_panel()` returns `FakeProvider` instances; real OpenAI,
+  Google, and DeepSeek clients land in v0.2 (P4 per the plan). The
+  manifest's API key fields are now marked optional and labeled "not
+  yet wired" so the install UI doesn't promise capability the code
+  doesn't yet have.
+- **No `.mcpb` bundle yet.** Build script lands in P5 atomically with
+  the manifest's `manifest_version` bump, `uv`-shaped launcher, and
+  `${user_config.*}` substitution. Until then, the package runs from
+  source via `python -m roundtable`.
+- **No CI yet.** Tests pass locally; GitHub Actions workflows land
+  with P5.
 
 ## [0.1.0] — TBD
 

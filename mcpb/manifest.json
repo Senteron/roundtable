@@ -34,28 +34,28 @@
     "ANTHROPIC_API_KEY": {
       "type": "string",
       "title": "Anthropic API Key",
-      "description": "Optional. Only needed if Claude is configured as a panel member rather than the orchestrator.",
+      "description": "Not yet wired; v0.1 returns placeholder responses. Will be used in v0.2 only if Claude is configured as a panel member rather than the orchestrator.",
       "sensitive": true,
       "required": false
     },
     "OPENAI_API_KEY": {
       "type": "string",
       "title": "OpenAI API Key",
-      "description": "Required for GPT panel members.",
+      "description": "Not yet wired; v0.1 returns placeholder responses. Will be required for GPT panel members in v0.2 (P4).",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "GOOGLE_API_KEY": {
       "type": "string",
       "title": "Google API Key",
-      "description": "Required for Gemini panel members.",
+      "description": "Not yet wired; v0.1 returns placeholder responses. Will be required for Gemini panel members in v0.2 (P4).",
       "sensitive": true,
-      "required": true
+      "required": false
     },
     "DEEPSEEK_API_KEY": {
       "type": "string",
       "title": "DeepSeek API Key",
-      "description": "Required for DeepSeek panel members.",
+      "description": "Not yet wired; v0.1 returns placeholder responses. Will be used for DeepSeek panel members in v0.2 (P4).",
       "sensitive": true,
       "required": false
     }
