@@ -486,6 +486,12 @@ error from input validation rather than from a provider call.
 
 ## 8. Implementation sequence
 
+**Superseded by [docs/review-concerns-plan.md](./review-concerns-plan.md).**
+The plan there (P0–P5) is the authoritative sequencing for v0.1, and
+incorporates contract decisions (D1–D9) that post-date this section.
+The original step list below remains as historical context, but read
+the plan first.
+
 Each step is one commit, reviewable independently. Steps build on each
 other but don't combine unrelated changes.
 

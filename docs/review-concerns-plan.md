@@ -1,218 +1,258 @@
 # Roundtable review concerns and prioritized plan
 
-Status: pre-implementation review follow-up.
+Status: pre-implementation. This document supersedes
+[docs/design.md §8](./design.md) on sequencing; design.md still owns the
+v0.1 contract, framing prompt, and rationale.
 
 This document consolidates the remaining concerns from the second review
-pass. It intentionally does not repeat the broader product rationale already
-covered in `docs/design.md` and `docs/decisions.md`. The goal is to identify
-what still needs to be clarified or fixed before the v0.1 implementation
-sequence proceeds.
+pass, takes binding positions on each, and sequences the work as P0–P5.
+The goal is to enter implementation with a stable contract and no
+re-litigated decisions.
 
-## Summary
+## Decisions
 
-The core design is sound: Roundtable should remain a stateless MCP dispatcher
-that returns raw panel answers, with Claude acting as orchestrator. The design
-docs now cover the tool contract, framing prompt, N-1 behavior, no-persistence
-policy, implementation sequence, and rationale.
+Binding for v0.1. Future work that contradicts any of these is a
+contract change, not a refactor.
 
-The remaining work is mostly contract sharpness and release hygiene:
+### D1. Failed-stub flow into later rounds
 
-- Decide how failed model stubs flow into later rounds.
-- Distinguish orchestrator drafts from panel answers in the schema.
-- Keep the manifest, entry points, launcher command, and build plan aligned.
-- Apply version discipline to both provider-facing framing and Claude-facing
-  tool descriptions.
-- Reconcile changelog/version state before shipping.
-- Keep no-disk-write tests scoped to Roundtable-owned behavior.
+Failed responses **do not appear in `PANEL ANSWERS`** on the next round.
+Instead, the round-1+ framing template includes an `UNAVAILABLE
+PARTICIPANTS` section listing model name and error class when at least
+one panelist failed the prior round.
 
-## Concerns
+Rationale: presenting an error stub as peer reasoning distorts
+deliberation; silently omitting it makes the panel appear to shrink.
+The named-but-empty section preserves transparency without producing
+fake signal.
 
-### 1. Failed model stubs in later rounds
+### D2. Orchestrator vs panelist identity
 
-`docs/design.md` specifies that model failures return per-model error stubs and
-that each response contains one entry per requested model. It does not yet say
-whether those error stubs should be included in `prior_answers` on the next
-round.
+Each `prior_answers` entry carries a required `source` field with enum
+`"orchestrator" | "panelist"`. No `participant_id` in v0.1 —
+`(model, source)` is unique under the current constraint that the
+orchestrator is always Claude and panelists are distinct models per
+call. Revisit if and when Claude-as-panelist override ships.
 
-This choice affects `framing.py` directly. If error stubs are included in the
-panel answer bundle, later panelists may treat "GPT timed out" as deliberation
-signal even though no peer reasoning exists. If error stubs are omitted without
-any indication, the panel appears to shrink silently across rounds.
+### D3. Rename `version` → `round` in the bundle schema
 
-Recommended decision: exclude failed responses from `PANEL ANSWERS`, but include
-a separate metadata section such as `UNAVAILABLE PARTICIPANTS` when appropriate.
-That preserves transparency without presenting errors as peer reasoning.
+`prior_answers[i].version` becomes `prior_answers[i].round`. The
+existing name collided with provider/model versioning concepts. This is
+the only schema rename before v0.1 ships.
 
-### 2. Orchestrator versus panelist identity
+### D4. Context-window overflow contract
 
-The planned `prior_answers` schema uses a `model` field, with examples such as
-`"claude"`. This works while Claude is only the orchestrator and Anthropic
-models are not panel members. It becomes ambiguous if Claude-as-panelist is ever
-allowed via an override.
+An oversize framed prompt produces a **per-model `error: "context_overflow"`
+stub** for the affected provider only. The round proceeds normally for
+other panelists. Never silently truncate. Never split a single round
+into multiple sub-rounds inside the dispatcher.
 
-Recommended decision: add a source/role field now, before schema compatibility
-matters. For example:
+Implementation: each `Provider` carries a `context_window_tokens`
+constant; `framing.py` exposes a `framed_size(provider, prompt,
+prior_answers)` helper; the dispatcher checks before dispatch and
+short-circuits to the error stub when the framed prompt exceeds the
+window minus a configured response reserve. This matches the N-1
+tolerance contract — overflow is just another per-model failure mode.
 
-```python
-{
-    "model": "claude",
-    "source": "orchestrator",  # "orchestrator" | "panelist"
-    "round": 0,
-    "answer": "..."
-}
-```
+### D5. Version-bump discipline covers two strings
 
-This keeps Claude's draft distinguishable from an answer produced by a dispatched
-Claude-family provider later.
+The framing-prompt version-bump rule in [CLAUDE.md](../CLAUDE.md) and
+[docs/design.md §3](./design.md) extends to **two** load-bearing
+strings:
 
-### 3. Manifest entry point and launcher alignment
+- The round-1+ framing prompt sent to panel models.
+- The tool description Claude reads in
+  [mcpb/manifest.json](../mcpb/manifest.json).
 
-The current manifest references `roundtable/mcp_server.py` and runs
-`python -m roundtable.mcp_server`, but those files do not exist yet. The design
-plan says to add `roundtable/__main__.py` and use `-m roundtable`, likely via
-`uv run` in the bundle.
+Material changes to either require a minor version bump in both
+[pyproject.toml](../pyproject.toml) and
+[mcpb/manifest.json](../mcpb/manifest.json) and a CHANGELOG entry.
 
-This is a known planned fix, but it must land atomically with the MCP server
-implementation. Step 2 should add `mcp_server.py`, `__main__.py`, and update the
-manifest so the declared entry point and actual startup command match.
+### D6. Timeout terminology
 
-Checkout tests should use `sys.executable` rather than assuming a `python`
-binary exists. Bundle tests should separately validate the exact manifest
-command.
+v0.1 has exactly two timeout layers:
 
-### 4. Version discipline for tool descriptions
+- **Per-provider call** (default 90s, max 180s, configurable via the
+  tool's `per_call_timeout_seconds` input).
+- **Whole-round** (the MCP-call wall clock — derived, not separately
+  configurable in v0.1).
 
-`CLAUDE.md` already says the tool description is part of the API. The explicit
-version-bump rule, however, focuses mostly on the round-1+ framing prompt.
+The earlier CLAUDE.md language of "per-call, per-round, and per-run" is
+narrowed to these two. CLAUDE.md is updated as part of P3.
 
-The tool description is also load-bearing: it tells Claude when to call
-Roundtable, how to interpret rounds, and when to stop. Changes to the tool
-description should therefore receive the same discipline as provider-facing
-framing changes.
+### D7. No-disk-write test scope
 
-Recommended rule: any material change to either the provider-facing framing
-prompt or the Claude-facing tool description requires a changelog entry and the
-appropriate version bump.
+`tests/unit/test_no_disk_writes.py` asserts that **Roundtable-owned
+code** wrote nothing during a round, using `FakeProvider` so real SDKs
+are out of the picture. Provider SDK cache behavior is out of scope.
 
-### 5. Changelog and version state
+A stronger real-provider privacy test — assert no *prompt or answer
+content* lands on disk during a live call — is **deferred to v0.2** and
+listed in [docs/decisions.md](./decisions.md) deferrals.
 
-`pyproject.toml` and `mcpb/manifest.json` currently declare `0.1.0`, while
-`CHANGELOG.md` still has `0.1.0 - TBD`. That is acceptable during scaffolding,
-but it becomes confusing once implementation begins.
+### D8. Live provider tests are a maintainer smoke check
 
-Recommended decision: treat `0.1.0` as the first working MCP bundle, not the
-scaffold. Before release, align `CHANGELOG.md`, `pyproject.toml`,
-`mcpb/manifest.json`, and the committed bundle artifact.
+`pytest -m live` is **not a release gate**. It is a maintainer-only
+smoke check before tagging. The tag-time procedure is: run live tests
+locally, paste results into the release PR description, tag.
 
-If pre-release versions are useful during development, use an explicit dev
-version rather than implying the incomplete scaffold is the release.
+Rationale: provider APIs are routinely flaky (cold-start latencies,
+intermittent 5xx, regional quota limits). Gating release on a flaky
+external dependency either invites forbidden retry logic or weakens the
+gate silently. A documented smoke check gives the same signal without
+the brittleness.
 
-### 6. Timeout terminology
+### D9. Repository URLs
 
-The changelog promises per-call, per-round, and per-run wall-clock timeouts.
-In v0.1, one MCP invocation equals one round, so per-round and per-run are the
-same boundary.
+`https://github.com/Senteron/roundtable` is the intended public home.
+The local `origin` remote already matches.
+[pyproject.toml](../pyproject.toml) and
+[mcpb/manifest.json](../mcpb/manifest.json) URLs are correct as-is. No
+action.
 
-Recommended decision: document that equivalence for v0.1, or narrow the promise
-to per-provider call timeout plus whole-round timeout. Avoid promising a third
-timeout layer unless it has distinct behavior.
+## Status table
 
-### 7. No-disk-write test scope
-
-The no-persistence invariant is central. The planned test using `FakeProvider`
-is the right v0.1 check for Roundtable-owned writes.
-
-Avoid expanding that test into a blanket "real SDKs write no files" assertion.
-Provider SDKs may read credentials, touch caches, or create config files outside
-Roundtable's control. A stronger real-provider privacy test should check that no
-prompt or answer content is written, not that no filesystem activity occurs.
-
-### 8. Repository metadata
-
-The repository metadata currently points to `https://github.com/Senteron/roundtable`,
-and the local `origin` remote matches that URL. If the intended public home is a
-different repository, update the remote, `pyproject.toml`, and `mcpb/manifest.json`
-together. If `Senteron/roundtable` is intentional, no action is needed.
+| Concern | Decision | Blocks | Target file | Status |
+| --- | --- | --- | --- | --- |
+| Failed-stub flow | D1: separate `UNAVAILABLE PARTICIPANTS` section | P1 framing.py | docs/design.md §3 | Decided; pending design.md update |
+| Orchestrator vs panelist | D2: required `source` enum | P1 schemas.py | docs/design.md §2.1 | Decided; pending design.md update |
+| `version` → `round` rename | D3: rename in bundle entry | P1 schemas.py | docs/design.md §2.1 | Decided; pending design.md update |
+| Context-window overflow | D4: per-model error stub | P1 framing.py + dispatcher.py | docs/design.md §2.1, §4 | Decided; pending design.md update |
+| Tool-description versioning | D5: same rule as framing | P3 | CLAUDE.md, docs/design.md §3 | Decided; pending CLAUDE.md edit |
+| Timeout terminology | D6: two layers, named | P3 | CLAUDE.md, CHANGELOG.md | Decided; pending CLAUDE.md/CHANGELOG edits |
+| No-disk-write test scope | D7: Roundtable-owned writes only | P1 | docs/design.md §4.4 | Decided; pending design.md note |
+| Live tests as release gate | D8: maintainer smoke check | P4 release procedure | docs/design.md §6.3, README | Decided; pending docs update |
+| Repository URLs | D9: keep as-is | none | n/a | Decided; no action |
+| Manifest entry-point alignment | n/a — execution detail | P2 | mcpb/manifest.json | Pending P2 |
+| Changelog/version state | n/a — execution detail | P3 | CHANGELOG.md | Pending P3 |
 
 ## Prioritized plan
 
-### P0: Resolve schema decisions before Step 1
+### P0: Apply decisions to design docs
 
-Do this before implementing `schemas.py`, `framing.py`, or the dispatcher.
+Before any code lands, propagate D1–D8 into [docs/design.md](./design.md)
+and [CLAUDE.md](../CLAUDE.md) so future agents see the contract
+consistently. One commit.
 
-1. Decide and document whether failed model responses are eligible for
-   `prior_answers`.
-2. Add `source` or `role` to prior-answer entries.
-3. Rename `prior_answers[i].version` to `round` or `source_round` to avoid
-   confusion with provider/model versions.
+1. Update [docs/design.md §2.1](./design.md) — add `source` field, rename
+   `version` to `round`, add the `context_overflow` error class.
+2. Update [docs/design.md §3](./design.md) — add the `UNAVAILABLE
+   PARTICIPANTS` section to the framing template, with the empty-case
+   omitted (the section appears only when at least one prior-round
+   panelist failed).
+3. Update [docs/design.md §4.2 and §4.4](./design.md) — narrow timeout
+   terminology to per-call + per-round; clarify no-disk-write test
+   scope.
+4. Update [docs/design.md §6.3](./design.md) — note live tests are
+   maintainer smoke, not release gate.
+5. Update [CLAUDE.md](../CLAUDE.md) — extend version-bump rule to
+   cover the tool description string (D5); narrow timeout language
+   (D6).
+6. Update [CHANGELOG.md](../CHANGELOG.md) — replace "per-call,
+   per-round, and per-run wall-clock timeouts" with the two-layer
+   language.
 
-Deliverable: updated `docs/design.md` contract, then implementation can start
-against a stable schema.
+Deliverable: all design docs reflect D1–D8 consistently. No code
+changes.
 
-### P1: Implement the thin vertical slice
+### P1: Thin vertical slice
 
 Build the testable core without real provider SDK calls.
 
-1. Add `schemas.py`.
-2. Add `framing.py`, including the round-1+ prompt and bundle formatting.
-3. Add provider base types and `FakeProvider`.
-4. Add `dispatcher.py` with parallel calls, timeout handling, N-1 tolerance,
-   and response aggregation.
-5. Add unit tests for validation, framing, timeout, N-1 tolerance, ordering,
-   cost aggregation, and no Roundtable-owned disk writes.
+1. Add `schemas.py` reflecting D2 (`source`), D3 (`round`), and D4
+   (`context_overflow` error class).
+2. Add `framing.py` — round-1+ template, bundle formatter,
+   `framed_size()` helper, `UNAVAILABLE PARTICIPANTS` rendering per D1.
+3. Add `providers/base.py` (with `context_window_tokens` per D4) and
+   `providers/fake.py`.
+4. Add `dispatcher.py` — parallel calls, two-layer timeouts per D6,
+   N-1 tolerance, pre-dispatch overflow check per D4, response
+   aggregation.
+5. Add unit tests: schema validation, framing (including golden
+   snapshot), timeout, N-1 tolerance, ordering, cost aggregation,
+   overflow producing a per-model stub, Roundtable-owned no-disk-write
+   per D7.
 
 Deliverable: `pytest tests/unit/` passes without network credentials.
 
-### P2: Add MCP startup and manifest alignment
+### P2: MCP startup and manifest alignment
 
-Make the declared package entry point real.
+Make the declared package entry point real. **Scope-limited: this step
+fixes only the `entry_point` and `args` mismatch — full manifest
+bundle-readiness (manifest_version bump, `uv` switch, `compatibility`
+block, env substitutions) lands in P5.**
 
 1. Add `roundtable/mcp_server.py`.
 2. Add `roundtable/__main__.py`.
-3. Update `mcpb/manifest.json` to match the final command shape.
-4. Add integration tests for startup, `tools/list`, round 0, and round 1+ using
-   fake providers.
-5. Use `sys.executable` in checkout startup tests; separately test the manifest
-   command used by the bundle.
+3. Update [mcpb/manifest.json](../mcpb/manifest.json) — fix
+   `entry_point` to `roundtable/__main__.py` and `args` to
+   `["-m", "roundtable"]`. Do not touch `manifest_version`, `command`,
+   `compatibility`, or `env` substitutions yet — those land in P5
+   atomically with the build script and bundle artifact.
+4. Add integration tests for startup (`subprocess.run([sys.executable,
+   "-m", "roundtable"])`), `tools/list`, round 0, and round 1+ using
+   `FakeProvider` via the `models` override.
 
-Deliverable: the MCP server starts locally and the manifest no longer points at
-missing files.
+Deliverable: the MCP server starts locally and the manifest's
+`entry_point` matches reality.
 
-### P3: Tighten release and version discipline
+### P3: Release and version discipline
 
-Do this before adding real providers or producing a bundle.
+Tighten release metadata before adding real providers or producing a
+bundle.
 
-1. Extend version-bump discipline to tool description changes.
-2. Align `CHANGELOG.md`, `pyproject.toml`, and `mcpb/manifest.json`.
-3. Add tests for version sync. Include changelog checks if practical.
-4. Clarify timeout terminology in the docs and changelog.
-5. Confirm repository URLs are intentional.
+1. Add a unit test asserting `pyproject.toml` version equals
+   `mcpb/manifest.json` version.
+2. Align [CHANGELOG.md](../CHANGELOG.md) — move feature list from
+   `[Unreleased]` to `[0.1.0]` when v0.1 is actually shipped; until
+   then, keep the scaffold under `[Unreleased]` and `[0.1.0]` as a
+   forward-looking placeholder is acceptable.
+3. Confirm CLAUDE.md and CHANGELOG language for D5 and D6 are in
+   place (the P0 commit applies the doc edits; this step verifies and
+   tests them).
 
-Deliverable: release metadata no longer carries ambiguity into the first bundle.
+Deliverable: release metadata carries no ambiguity into the first
+bundle.
 
-### P4: Add real providers
+### P4: Real providers
 
 Only after the fake-provider path is stable.
 
-1. Add OpenAI provider.
+1. Add OpenAI provider (with `context_window_tokens` set per D4).
 2. Add Google provider.
 3. Add DeepSeek provider.
-4. Add provider availability detection from environment variables.
-5. Add live tests gated by explicit env vars and pytest markers.
+4. Add `panel.py` — default composition, provider availability
+   detection from environment variables, automatic narrowing when keys
+   are missing.
+5. Add live tests under `tests/live/` gated by `pytest -m live` and
+   the relevant API key env var. Per D8, these are maintainer smoke
+   checks, not CI gates.
 
-Deliverable: real provider calls work, but ordinary tests still run offline.
+Deliverable: real provider calls work; ordinary tests run offline; CI
+does not run `-m live`.
 
 ### P5: Build and bundle
 
 Mirror the proven Senteron bundle pattern.
 
-1. Add `mcpb/pyproject.toml` for bundle runtime dependencies.
+1. Add [mcpb/pyproject.toml](../mcpb/pyproject.toml) for bundle
+   runtime dependencies (distinct from the repo-root
+   [pyproject.toml](../pyproject.toml)'s dev dependencies).
 2. Add `mcpb/build.sh`.
-3. Add bundle freshness check script.
-4. Produce `dist/roundtable-0.1.0.mcpb` and `.sha256`.
-5. Add CI for tests and bundle freshness.
+3. Add `scripts/check_mcpb_freshness.sh`.
+4. Update [mcpb/manifest.json](../mcpb/manifest.json) for full
+   bundle-readiness: bump `manifest_version` to `0.3`, switch
+   `command` to `uv` with Senteron-shape args, add `compatibility`
+   block, move user-config to `server.mcp_config.env`
+   substitutions, make API keys optional (panel narrows
+   automatically).
+5. Produce `dist/roundtable-0.1.0.mcpb` and `.sha256`; commit both.
+6. Add CI: `tests.yml` (push + PR, skips `-m live`),
+   `mcpb-up-to-date.yml` (rebuild in clean checkout, diff against
+   committed bundle, fail on drift).
 
-Deliverable: installable v0.1.0 MCP bundle with committed checksum.
+Deliverable: installable v0.1.0 MCP bundle with committed checksum and
+mechanical freshness enforcement.
 
 ## Definition of done for v0.1.0
 
@@ -220,11 +260,16 @@ Roundtable v0.1.0 is ready when:
 
 - `roundtable_round` exists and is callable through MCP.
 - Round 0 sends the raw prompt unchanged.
-- Round 1+ uses the committed framing prompt.
-- Failed panelists return error stubs without blocking successful panelists.
-- Later-round framing handles unavailable participants deliberately.
-- The tool writes no prompt or answer content to disk.
+- Round 1+ uses the committed framing prompt, including the
+  `UNAVAILABLE PARTICIPANTS` rendering per D1.
+- The bundle schema uses `source` and `round` per D2 and D3.
+- Failed panelists return error stubs without blocking successful
+  panelists; oversize prompts produce `context_overflow` stubs per D4.
+- The tool writes no prompt or answer content to disk during a
+  `FakeProvider` round (D7).
 - Manifest startup works in the bundle environment.
 - Unit and integration tests pass without real network calls.
-- Live provider tests pass when credentials are explicitly supplied.
+- Maintainer ran `pytest -m live` once before tagging and pasted the
+  result into the release PR description (D8). Failure of `-m live` is
+  not an automatic block but requires written justification.
 - Version, changelog, manifest, and bundle artifact are aligned.
