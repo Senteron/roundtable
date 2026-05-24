@@ -60,3 +60,6 @@ target-version = "py311"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "live: maintainer smoke check against real provider APIs (D8). Requires OPENAI_API_KEY, GOOGLE_API_KEY, DEEPSEEK_API_KEY in the environment. NOT run in CI; not a release gate.",
+]
