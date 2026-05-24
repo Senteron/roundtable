@@ -20,7 +20,8 @@ Initial release. Will include:
   (revise your own answer informed by peers, do not synthesize).
 - N-1 panel tolerance; failed models return error stubs and the round
   continues.
-- Per-call, per-round, and per-run wall-clock timeouts.
+- Two-layer wall-clock timeouts: per-provider call (configurable,
+  default 90s, max 180s) and whole-round (derived from per-call).
 - Provider clients for OpenAI, Google, DeepSeek (and optionally Anthropic).
 - `.mcpb` bundle for Claude Desktop install.
 - No persistence: nothing is written to disk by the tool.

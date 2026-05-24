@@ -83,14 +83,26 @@ kept in sync):
   text sent to panel models.
 - **Major (0.X → 1.0+)** — breaking change to the tool's contract.
 
-### The framing prompt counts as user-visible behavior
+### Two strings get the version-bump discipline
 
-Roundtable's standardized round-1+ framing prompt — the text sent to
-each panel member when prior answers are included — is the single most
-load-bearing piece of text in the system. Changing it changes the
-deliberation dynamic. Any modification to that text is a **minor**
-version bump and a CHANGELOG entry, even if the code change looks
-trivial.
+Two load-bearing strings change the system's behavior even when the
+surrounding code looks unchanged. Both require a **minor** version
+bump and a CHANGELOG entry on any material change, even if the diff
+looks trivial:
+
+1. **The round-1+ framing prompt** — the text sent to each panel
+   member when prior answers are included. It is the single most
+   load-bearing piece of text in the system; changing it changes the
+   deliberation dynamic.
+2. **The tool description** in
+   [mcpb/manifest.json](mcpb/manifest.json) `tools[].description`.
+   This is the text Claude reads when deciding whether and how to
+   invoke the tool, including the signal-density stop condition that
+   replaces a vote field. It is as load-bearing as the framing
+   prompt.
+
+Both strings are part of the API contract (D5 in
+[docs/review-concerns-plan.md](docs/review-concerns-plan.md)).
 
 ## Other persistent rules
 
