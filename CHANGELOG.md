@@ -7,6 +7,59 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-24
+
+### Added (orchestrator-visible)
+
+- **`resolved_models` in `RoundOutput`.** Every successful round
+  response now includes a `resolved_models: list[str]` field — the
+  panel names actually dispatched to, in caller order, including
+  `fake-*` fixtures and `unknown_model` sentinels. An orchestrator
+  can compare this against the names it passed in `models` to
+  confirm an override took effect without having to read its own
+  outgoing tool-call JSON. Motivation: 2026-05-24 observation that
+  an orchestrator running through Claude Code never actually sent
+  a `models` field with its overrides, then spent three turns
+  inventing a fictitious harness-bug root cause for "why the
+  override was rejected" instead of inspecting its own payload.
+  With `resolved_models` echoed back, the orchestrator can see
+  "you got the default panel, your override never arrived" rather
+  than blame imaginary marshalling bugs.
+
+### Fixed
+
+- **`models` field accepts JSON-encoded string of array** as a
+  workaround for a Claude Code MCP-client bug observed
+  2026-05-24 (claude-ai/0.1.0, protocol 2025-11-25). Despite the
+  tool's inputSchema declaring `type: ["array", "null"]` on
+  `models`, Claude Code shipped array parameters as JSON-encoded
+  *strings* in the `tools/call` payload — e.g.
+  `'["gpt-5.5", "gemini-3.1-pro-preview", "deepseek-reasoner"]'`
+  arrived as a Python str, not a list. The server now detects a
+  string that parses cleanly as a JSON array of strings and
+  accepts it. A real array is still preferred and continues to
+  work; this is a narrow compatibility shim. Other MCP clients
+  (the test suite, Claude Desktop's bundled client) were
+  unaffected; only the Claude Code SDK harness exhibited the
+  string-serialization issue.
+
+### Changed (orchestrator-visible)
+
+- **`models=[]` (empty array) is now rejected as `invalid_input`.**
+  Previously an empty array silently fell through to the default
+  panel, indistinguishable from `models: null` or an omitted
+  field. `RoundInput` now rejects empty arrays with a Pydantic
+  validation error that explains the rationale: an orchestrator
+  whose `models` field was stripped by the harness cannot tell
+  the difference between "I sent an empty array" and "my field
+  was dropped" unless the server distinguishes them. The JSON
+  schema's `models.minItems: 1` declares the constraint to the
+  client as well.
+- **Tool description and `models` schema description** updated to
+  document `resolved_models` and the empty-array rejection. One
+  of the two version-bump-discipline strings per `CLAUDE.md`
+  (framing prompt unchanged in this release).
+
 ## [0.3.1] — 2026-05-24
 
 ### Fixed

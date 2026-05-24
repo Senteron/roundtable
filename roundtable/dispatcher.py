@@ -255,6 +255,7 @@ async def dispatch(
         round=current_round,
         responses=responses,
         errors=errors,
+        resolved_models=[p.name for p in providers],
         total_elapsed_seconds=total_elapsed,
         total_cost_usd=total_cost,
     )
