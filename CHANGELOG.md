@@ -9,6 +9,63 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 (none yet)
 
+## [0.1.2] — 2026-05-24
+
+Documentation release with one small tool-description change.
+Focused on making cost behavior honest and discoverable without
+adding new mechanisms.
+
+### Added
+
+- **README "What it costs" section** with the two-component cost
+  model (panel dispatch is measured and reported in
+  `total_cost_usd`; orchestrator-side Claude tokens are billed
+  separately by Anthropic and typically dominate by 10-30×).
+  Magnitudes calibrated against real runs from v0.1.1 deployment:
+  trivial round ~$0.0001 panel + ~$0.05-0.10 orchestrator;
+  substantive round ~$0.03 + ~$0.30-1.00; three-round deliberation
+  ~$0.10-0.30 + ~$1-3.
+- **README "What models does the panel use?" section** naming the
+  default lineup (`gpt-4o`, `gemini-2.5-pro`, `deepseek-chat`)
+  and acknowledging that newer models exist
+  (`gpt-5`/`gpt-5.1`, `gemini-3-pro`) but aren't the default. The
+  override path via `models=[...]` is fully wired; only the
+  defaults are pinned.
+- **[docs/decisions.md §17](docs/decisions.md)** capturing four
+  cost-related decisions for the audit trail:
+  17.1 — `total_cost_usd` reflects panel dispatch only (and why).
+  17.2 — No dry-run cost estimator (five reasons it would mislead
+  more than it helps).
+  17.3 — Pricing constants are commit-time snapshots, not
+  auto-updated.
+  17.4 — Model defaults are validated, not latest; bumping is a
+  v0.2 task requiring re-validation against the framing prompt's
+  deliberation dynamics.
+
+### Changed
+
+- **Tool description** carries a one-line addition noting that
+  `total_cost_usd` reflects panel dispatch only and that
+  orchestrator-side tokens are billed separately. Per the
+  "Two strings get the version-bump discipline" rule in
+  CLAUDE.md, this is a load-bearing string change requiring a
+  minor version bump in `pyproject.toml` + `mcpb/manifest.json` +
+  `mcpb/pyproject.toml` + `roundtable/__init__.py` and a CHANGELOG
+  entry. The manifest's `tools[0].description` is synced to match.
+- README status line bumped from v0.1.0 to v0.1.2.
+
+### Did not change
+
+- No schema field changes. No new tool parameters. No framing
+  prompt edits. No real provider code paths touched. v0.1.2 is
+  doc-and-tool-description only on the user-facing contract.
+- No `manifest_version` bump; still `0.3`.
+- The bundle is freshly built for the release, but the only
+  non-version-string bytes that differ from v0.1.1's bundle are
+  the tool-description text in `mcp_server.py` and `manifest.json`.
+  All dispatcher, schema, framing, provider, and test code paths
+  inside the bundle are byte-identical to v0.1.1.
+
 ## [0.1.1] — 2026-05-24
 
 Bugfix release responding to a real-world failure mode caught
