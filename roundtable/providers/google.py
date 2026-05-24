@@ -9,8 +9,12 @@ protocol speaks.
 API key is read from `GOOGLE_API_KEY` at construction time; a missing
 key raises immediately rather than deferring failure to `call()`.
 
-Pricing constants are commit-time estimates from Google's public
-pricing page. Update here when pricing changes; see CHANGELOG.
+Pricing is a per-model lookup table (`_PRICING`) keyed by model name,
+with `(input_per_M_USD, output_per_M_USD)` tuples. Models not in the
+table get `None` cost — better to omit a cost than to bill an override
+at the wrong rate. Gemini has tiered pricing by prompt size; entries
+here use the <=200K tier as the rough estimator. Update when pricing
+changes; see CHANGELOG.
 """
 
 from __future__ import annotations
@@ -23,12 +27,11 @@ from google.genai import types as genai_types
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# Gemini 2.5 Pro public pricing, USD per 1M tokens (commit-time
-# estimate). Gemini has tiered pricing by prompt size; we use the
-# <=200K tier as the rough estimator. Update when pricing changes.
+# Gemini public pricing, USD per 1M tokens (commit-time estimate).
 # https://ai.google.dev/gemini-api/docs/pricing
-_PRICE_INPUT_PER_M_USD = 1.25
-_PRICE_OUTPUT_PER_M_USD = 10.00
+_PRICING: dict[str, tuple[float, float]] = {
+    "gemini-2.5-pro": (1.25, 10.00),
+}
 
 DEFAULT_MODEL = "gemini-2.5-pro"
 CONTEXT_WINDOW_TOKENS = 1_000_000
@@ -91,7 +94,7 @@ class GoogleProvider:
         completion_tokens = (
             getattr(usage, "candidates_token_count", None) if usage else None
         )
-        cost = _estimate_cost_usd(prompt_tokens, completion_tokens)
+        cost = _estimate_cost_usd(self.name, prompt_tokens, completion_tokens)
         return ProviderResponse(
             text=text,
             elapsed_seconds=elapsed,
@@ -102,11 +105,16 @@ class GoogleProvider:
 
 
 def _estimate_cost_usd(
+    model: str,
     prompt_tokens: int | None,
     completion_tokens: int | None,
 ) -> float | None:
+    prices = _PRICING.get(model)
+    if prices is None:
+        return None
     if prompt_tokens is None and completion_tokens is None:
         return None
+    input_per_m, output_per_m = prices
     p = prompt_tokens or 0
     c = completion_tokens or 0
-    return (p * _PRICE_INPUT_PER_M_USD + c * _PRICE_OUTPUT_PER_M_USD) / 1_000_000
+    return (p * input_per_m + c * output_per_m) / 1_000_000

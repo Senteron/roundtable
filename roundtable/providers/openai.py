@@ -9,8 +9,10 @@ raises and converts it to a per-model error stub.
 API key is read from `OPENAI_API_KEY` at construction time; a missing
 key raises immediately rather than deferring failure to `call()`.
 
-Pricing constants are commit-time estimates from OpenAI's public
-pricing page. Update here when pricing changes; see CHANGELOG.
+Pricing is a per-model lookup table (`_PRICING`) keyed by model name,
+with `(input_per_M_USD, output_per_M_USD)` tuples. Models not in the
+table get `None` cost — better to omit a cost than to bill an override
+at the wrong rate. Update here when pricing changes; see CHANGELOG.
 """
 
 from __future__ import annotations
@@ -22,10 +24,11 @@ from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# OpenAI public pricing for gpt-4o, USD per 1M tokens (as of 2026-05).
+# OpenAI public pricing, USD per 1M tokens (as of 2026-05).
 # https://openai.com/api/pricing/
-_PRICE_INPUT_PER_M_USD = 2.50
-_PRICE_OUTPUT_PER_M_USD = 10.00
+_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-4o": (2.50, 10.00),
+}
 
 DEFAULT_MODEL = "gpt-4o"
 CONTEXT_WINDOW_TOKENS = 128_000
@@ -84,7 +87,7 @@ class OpenAIProvider:
         completion_tokens = (
             getattr(resp.usage, "completion_tokens", None) if resp.usage else None
         )
-        cost = _estimate_cost_usd(prompt_tokens, completion_tokens)
+        cost = _estimate_cost_usd(self.name, prompt_tokens, completion_tokens)
         return ProviderResponse(
             text=text,
             elapsed_seconds=elapsed,
@@ -95,11 +98,16 @@ class OpenAIProvider:
 
 
 def _estimate_cost_usd(
+    model: str,
     prompt_tokens: int | None,
     completion_tokens: int | None,
 ) -> float | None:
+    prices = _PRICING.get(model)
+    if prices is None:
+        return None
     if prompt_tokens is None and completion_tokens is None:
         return None
+    input_per_m, output_per_m = prices
     p = prompt_tokens or 0
     c = completion_tokens or 0
-    return (p * _PRICE_INPUT_PER_M_USD + c * _PRICE_OUTPUT_PER_M_USD) / 1_000_000
+    return (p * input_per_m + c * output_per_m) / 1_000_000
