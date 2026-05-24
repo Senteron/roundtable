@@ -123,12 +123,13 @@ class TestErrorClass:
         # D4: context_overflow must be a stable enum value.
         assert ErrorClass("context_overflow") is ErrorClass.CONTEXT_OVERFLOW
 
-    def test_all_four_classes(self) -> None:
+    def test_all_classes(self) -> None:
         assert {e.value for e in ErrorClass} == {
             "timeout",
             "api_error",
             "context_overflow",
             "invalid_output",
+            "unknown_model",
         }
 
 

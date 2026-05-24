@@ -181,7 +181,7 @@ async def test_prior_failures_round_trip_through_mcp() -> None:
                 "roundtable_round",
                 {
                     "prompt": "follow-up",
-                    "models": ["panelist-a"],
+                    "models": ["fake-panelist-a"],
                 },
             )
 
@@ -190,7 +190,7 @@ async def test_prior_failures_round_trip_through_mcp() -> None:
                 {
                     "prompt": "follow-up",
                     "round": 2,
-                    "models": ["panelist-a"],
+                    "models": ["fake-panelist-a"],
                     "prior_answers": [
                         {
                             "model": "claude",
@@ -279,3 +279,55 @@ async def test_mixed_round_bundle_returns_invalid_input_not_crash() -> None:
     detail_text = json.dumps(payload.get("detail", []))
     assert "share a single round number" in detail_text
 
+
+@pytest.mark.asyncio
+async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
+    """A caller-supplied model name that is not in the panel registry
+    must return error_class=unknown_model rather than silently
+    routing to FakeProvider and emitting a prompt-echo response.
+
+    Regression coverage for v0.2: pre-0.2 servers would treat
+    `gpt-5.5` etc. as valid fixture names and return prompt echoes
+    that an orchestrator could not distinguish from real answers.
+    """
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "What is 2+2?",
+                    "models": ["fake-a", "gpt-5.5", "gemini-3-pro"],
+                },
+            )
+
+    assert not result.isError
+    payload = json.loads(result.content[0].text)
+
+    by_name = {r["model"]: r for r in payload["responses"]}
+    assert [r["model"] for r in payload["responses"]] == [
+        "fake-a",
+        "gpt-5.5",
+        "gemini-3-pro",
+    ], "merged response must preserve caller-supplied model order"
+
+    # The legitimate FakeProvider fixture still works.
+    assert by_name["fake-a"]["error"] is None
+    assert by_name["fake-a"]["answer"] is not None
+
+    # The two unknown models surface as error stubs.
+    for name in ("gpt-5.5", "gemini-3-pro"):
+        assert by_name[name]["error"] == "unknown_model"
+        assert by_name[name]["answer"] is None
+        assert by_name[name]["estimated_cost_usd"] is None
+        assert "panel registry" in (by_name[name]["error_detail"] or "")
+
+    error_names = {e["model"]: e["error"] for e in payload["errors"]}
+    assert error_names == {
+        "gpt-5.5": "unknown_model",
+        "gemini-3-pro": "unknown_model",
+    }

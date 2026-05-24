@@ -18,7 +18,7 @@ import logging
 
 import pytest
 
-from roundtable.mcp_server import _resolve_panel
+from roundtable.mcp_server import _UnknownModel, _resolve_panel
 from roundtable.providers.fake import FakeProvider
 
 
@@ -93,22 +93,66 @@ def test_default_panel_with_one_key_present_returns_one_real_two_fakes(
     assert not isinstance(by_name["gpt-4o"], FakeProvider)
 
 
-def test_unknown_model_name_resolves_to_fake_without_warning(
+def test_unknown_model_name_resolves_to_unknown_sentinel(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A model name like 'fake-test' or 'arbitrary-string' is not in
-    the real-provider registry, so it resolves to FakeProvider with
-    no warning (warnings are reserved for known models with missing
-    keys).
+    """A model name not in the registry and not prefixed `fake-`
+    resolves to an _UnknownModel sentinel — NOT a FakeProvider. The
+    call_tool wrapper turns these into ModelResponse stubs with
+    error=unknown_model so the orchestrator can tell a misnamed
+    model from a real one that succeeded.
+
+    Earlier versions silently routed these to FakeProvider, which
+    produced prompt-echo answers that looked indistinguishable from
+    real responses to an orchestrator.
     """
     _strip_provider_keys(monkeypatch)
     caplog.set_level(logging.WARNING, logger="roundtable.mcp_server")
 
-    panel = _resolve_panel(["arbitrary-model-name"])
+    panel = _resolve_panel(["gpt-5.5"])
 
     assert len(panel) == 1
-    assert isinstance(panel[0], FakeProvider)
-    assert panel[0].name == "arbitrary-model-name"
-    # No warning — unknown names aren't expected to have keys.
-    assert "arbitrary-model-name" not in caplog.text
+    assert isinstance(panel[0], _UnknownModel)
+    assert panel[0].name == "gpt-5.5"
+    assert "gpt-5.5" in caplog.text
+    assert "panel registry" in caplog.text
+
+
+def test_fake_prefix_model_resolves_to_fake_without_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Names starting with `fake-` are the deliberate test-fixture
+    pathway and continue to resolve to FakeProvider with no warning.
+    Integration tests depend on this.
+    """
+    _strip_provider_keys(monkeypatch)
+    caplog.set_level(logging.WARNING, logger="roundtable.mcp_server")
+
+    panel = _resolve_panel(["fake-a", "fake-test"])
+
+    assert len(panel) == 2
+    assert all(isinstance(p, FakeProvider) for p in panel)
+    assert [p.name for p in panel] == ["fake-a", "fake-test"]
+    assert "fake-a" not in caplog.text
+    assert "fake-test" not in caplog.text
+
+
+def test_mixed_known_unknown_and_fake_preserves_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the caller mixes registry names, fake-* fixtures, and
+    unknown names, the resolved panel must preserve input order so
+    the call_tool merge step can align positions with inputs.models.
+    """
+    _strip_provider_keys(monkeypatch)
+
+    panel = _resolve_panel(["gpt-4o", "gpt-5.5", "fake-a"])
+
+    assert len(panel) == 3
+    # gpt-4o has no key set, so it lands as FakeProvider (existing
+    # missing-key fallback behavior).
+    assert isinstance(panel[0], FakeProvider) and panel[0].name == "gpt-4o"
+    assert isinstance(panel[1], _UnknownModel) and panel[1].name == "gpt-5.5"
+    assert isinstance(panel[2], FakeProvider) and panel[2].name == "fake-a"

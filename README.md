@@ -3,11 +3,14 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.1.2. Real OpenAI / Google / DeepSeek dispatch when
+**Status:** v0.2.0. Real OpenAI / Google / DeepSeek dispatch when
 the corresponding API key is configured; transparent fallback to a
 placeholder `FakeProvider` (with a clear stderr warning) for any
 provider whose key is missing, so the server boots and runs even
-with no keys configured.
+with no keys configured. As of v0.2.0, a `models` override that
+names something outside the panel registry (e.g. `gpt-5`,
+`gemini-3-pro`) returns `error_class: "unknown_model"` for that
+slot rather than silently emitting a prompt-echo placeholder.
 
 ## What it does
 
@@ -35,10 +38,10 @@ shuffling text between browser tabs.
 The current installable `.mcpb` bundle is committed to
 [dist/](dist/). To install in Claude Desktop:
 
-1. Download `dist/roundtable-0.1.2.mcpb` from this repo (or grab it
-   from the [v0.1.2 release page](https://github.com/Senteron/roundtable/releases/tag/v0.1.2)).
-2. Verify the checksum against `dist/roundtable-0.1.2.mcpb.sha256`
-   (`shasum -a 256 -c roundtable-0.1.2.mcpb.sha256`).
+1. Download `dist/roundtable-0.2.0.mcpb` from this repo (or grab it
+   from the [v0.2.0 release page](https://github.com/Senteron/roundtable/releases/tag/v0.2.0)).
+2. Verify the checksum against `dist/roundtable-0.2.0.mcpb.sha256`
+   (`shasum -a 256 -c roundtable-0.2.0.mcpb.sha256`).
 3. Open Claude Desktop → Settings → Extensions → Install from file →
    select the `.mcpb`.
 
@@ -148,18 +151,25 @@ invalidate parts of the audit trail. The full reasoning is in
 [docs/decisions.md §17.4](docs/decisions.md). Updating defaults is a
 v0.2 task scheduled to land with side-by-side re-validation.
 
-**To use newer models now:** override per-call via the `models`
-parameter:
+**The `models` override** lets you change which subset of the
+registry runs, e.g. dropping a slot or running a single-model
+panel:
 
 ```python
 roundtable_round(
     prompt="...",
-    models=["gpt-5", "gemini-3-pro", "deepseek-chat"],
+    models=["gpt-4o", "deepseek-chat"],   # two-model panel
 )
 ```
 
-The override mechanism is fully wired and tested; only the
-defaults are pinned.
+It does **not** currently let you switch to newer model snapshots
+like `gpt-5`, `gpt-5.1`, or `gemini-3-pro`. Those names aren't in
+the panel registry yet, and as of v0.2.0 supplying one returns
+`error_class: "unknown_model"` for that slot (pre-0.2.0 silently
+echoed the prompt back, which was indistinguishable from a real
+answer to an orchestrator). Adding new snapshots requires a panel
+registry change and provider re-validation — tracked as the v0.2
+defaults task in [docs/decisions.md §17.4](docs/decisions.md).
 
 ## License
 

@@ -7,8 +7,40 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added (docs-only, no version bump)
+## [0.2.0] — 2026-05-24
 
+### Changed (behavior; orchestrator-visible)
+
+- **`models` override now rejects unknown names instead of silently
+  routing them to FakeProvider.** A caller-supplied name that is
+  not in the panel registry (`gpt-4o`, `gemini-2.5-pro`,
+  `deepseek-chat`) and is not prefixed `fake-` now returns
+  `error_class: "unknown_model"` for that slot, with no dispatch,
+  no cost, and `answer: null`. Earlier versions treated unknown
+  names as `FakeProvider(behavior="echo")`, which emitted a
+  prompt-echo response indistinguishable from a real answer.
+  Observed in production on 2026-05-24 when a request for
+  `["gpt-5.5", "gemini-3-pro", "deepseek-chat", "deepseek-reasoner"]`
+  ran only the one registry-known model (deepseek-chat) and
+  silently echoed the prompt back from the other three at ~0.0001s
+  each. Names with the `fake-` prefix remain the deliberate
+  test-fixture pathway and continue to route to FakeProvider.
+
+### Added
+
+- **`ErrorClass.UNKNOWN_MODEL`** in `roundtable/schemas.py`, and
+  the corresponding `unknown_model` enum value in the
+  `prior_failures[].error_class` JSON schema in
+  `roundtable/mcp_server.py`. Listed in the tool description so
+  Claude understands the new failure mode without a docs round-trip.
+
+### Documentation
+
+- **README clarification** on the `models` override: the snippet
+  showing `models=["gpt-5", "gemini-3-pro", "deepseek-chat"]` was
+  misleading — those strings are not in the panel registry and
+  resolve to `unknown_model`. Replaced with an honest description
+  of which names work today and what to do about newer models.
 - **`docs/decisions.md §19`** — "Live-run findings: post-deployment
   evidence." Records four observed patterns from three real
   deliberations run through the deployed v0.1.x bundle on
@@ -20,8 +52,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rationalized is the closest thing the architecture produces to
   a high-confidence signal; (D) three non-overlapping blind spots
   in section-5-style "what aren't you asking?" prompts is the
-  modal output and not noise. None of these change v0.1 code; all
-  feed into the v0.2 model-defaults re-validation in §17.4.
+  modal output and not noise. Feeds into the v0.2 model-defaults
+  re-validation in §17.4.
 - **`docs/decisions.md §6` clarification** — the framing prompt
   is the panel-side instruction; the orchestrator's prompt is
   the other half. Live-run #2 (frontier-model comparison) showed
@@ -38,10 +70,27 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   brief note that output tokens dominate per-call cost so richer
   prompts inflate cost via the response size they elicit.
 
-No version bump. This is a documentation-only update; the bundle
-is unchanged. The v0.1.3 release tag (if cut) attaches the same
-v0.1.2 bundle bytes; users on v0.1.2 don't need to reinstall to
-get the documentation updates — they're visible in the repo.
+### Tests
+
+- `tests/unit/test_panel_resolution.py` — replaced the test that
+  asserted the silent-FakeProvider fallback with three new tests
+  covering: unknown-name → `_UnknownModel` sentinel + warning;
+  `fake-` prefix → FakeProvider, no warning; mixed input
+  preserves order.
+- `tests/unit/test_schemas.py` — `test_all_classes` now expects
+  five enum values.
+- `tests/integration/test_mcp_startup.py` — new end-to-end test
+  confirms a request mixing `fake-a` with two unknown names
+  returns a positionally-ordered response with one success and
+  two `unknown_model` error stubs.
+
+### Migration
+
+For most callers nothing changes — the default panel and known
+model names behave identically. Callers that were passing
+newer-model strings (`gpt-5`, `gemini-3-pro`, etc.) and getting
+prompt echoes back were already misreading those echoes as real
+answers; the new error class makes the failure mode visible.
 
 ## [0.1.2] — 2026-05-24
 

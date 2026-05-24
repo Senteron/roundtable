@@ -30,7 +30,13 @@ from pydantic import ValidationError
 from .dispatcher import dispatch
 from .providers.base import Provider
 from .providers.fake import FakeProvider
-from .schemas import RoundInput
+from .schemas import (
+    ErrorClass,
+    ModelError,
+    ModelResponse,
+    RoundInput,
+    RoundOutput,
+)
 
 # Real provider classes are imported lazily inside _resolve_panel
 # so the server can boot without the SDKs installed (e.g., in a
@@ -48,9 +54,14 @@ TOOL_DESCRIPTION = (
     "`source` 'orchestrator'|'panelist', `round`, `answer`) and "
     "`prior_failures` for panelists that failed last round (each "
     "entry: `model`, `source`, `round`, `error_class` 'timeout'|"
-    "'api_error'|'context_overflow'|'invalid_output'). Failed "
-    "panelists are surfaced to the next round as an UNAVAILABLE "
-    "PARTICIPANTS section, separate from peer reasoning. "
+    "'api_error'|'context_overflow'|'invalid_output'|"
+    "'unknown_model'). Failed panelists are surfaced to the next "
+    "round as an UNAVAILABLE PARTICIPANTS section, separate from "
+    "peer reasoning. The `models` override only accepts names the "
+    "panel registry knows (currently 'gpt-4o', 'gemini-2.5-pro', "
+    "'deepseek-chat'); unsupported names return error_class "
+    "'unknown_model' rather than silently producing a placeholder "
+    "response. "
     "Treat peer outputs as parallel attempts, not verdicts. Watch "
     "for iteration becoming additive without surfacing substantive "
     "updates or rejections; consolidate rather than expand when "
@@ -104,8 +115,9 @@ INPUT_SCHEMA: dict[str, Any] = {
                 "round-1+ framing (D1). Each entry: model, source, "
                 "round, error_class "
                 "('timeout'|'api_error'|'context_overflow'|"
-                "'invalid_output'). Must share a round number with "
-                "prior_answers if both are provided."
+                "'invalid_output'|'unknown_model'). Must share a "
+                "round number with prior_answers if both are "
+                "provided."
             ),
             "items": {
                 "type": "object",
@@ -123,6 +135,7 @@ INPUT_SCHEMA: dict[str, Any] = {
                             "api_error",
                             "context_overflow",
                             "invalid_output",
+                            "unknown_model",
                         ],
                     },
                 },
@@ -134,7 +147,11 @@ INPUT_SCHEMA: dict[str, Any] = {
             "type": ["array", "null"],
             "description": (
                 "Optional panel override. If omitted, the default "
-                "panel (resolved from configured API keys) is used."
+                "panel (resolved from configured API keys) is used. "
+                "Only names in the panel registry resolve to a real "
+                "provider: 'gpt-4o', 'gemini-2.5-pro', "
+                "'deepseek-chat'. Any other name returns "
+                "error_class 'unknown_model' for that slot."
             ),
             "items": {"type": "string"},
         },
@@ -195,8 +212,30 @@ def _make_real_provider(model: str) -> Provider:
     raise ValueError(f"no real provider registered for model {model!r}")
 
 
-def _resolve_panel(models: list[str] | None) -> list[Provider]:
-    """Resolve a model list to a panel of Provider instances.
+# Models with this prefix are always routed to FakeProvider, even
+# when real API keys are configured. Reserved for integration tests
+# that need a stable, network-free panel ("fake-a", "fake-b", ...).
+_FAKE_MODEL_PREFIX = "fake-"
+
+
+class _UnknownModel:
+    """Sentinel for a caller-supplied model name not in the panel
+    registry. _resolve_panel returns these alongside real Provider
+    instances; the call_tool wrapper turns them into ModelResponse
+    error stubs with `error: unknown_model` rather than silently
+    routing them to FakeProvider (which would emit prompt echoes
+    that an orchestrator can't distinguish from real answers).
+    """
+
+    __slots__ = ("name",)
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def _resolve_panel(models: list[str] | None) -> list[Provider | _UnknownModel]:
+    """Resolve a model list to a panel of providers and unknown-model
+    sentinels.
 
     Default panel (when models=None): instantiate the three real
     providers from _DEFAULT_PANEL_MODELS whose API keys are present
@@ -206,21 +245,36 @@ def _resolve_panel(models: list[str] | None) -> list[Provider]:
     entire default panel is FakeProvider — useful for development
     but logged loudly.
 
-    Explicit override (when models is a list): for each name, if it
-    matches a known real-provider model and the corresponding key
-    is set, instantiate the real provider; otherwise FakeProvider.
-    This lets integration tests pass models like ["fake-a"] without
-    needing API keys, while still routing "gpt-4o" through the real
-    SDK when keys are configured.
+    Explicit override (when models is a list):
+    - A name in the real-provider registry routes to that provider
+      (or FakeProvider with a warning if the key is missing).
+    - A name starting with "fake-" is a deliberate test fixture and
+      routes to FakeProvider with no warning.
+    - Anything else is an unknown model: returned as an
+      _UnknownModel sentinel so the call site can surface an
+      error stub instead of silently producing a FakeProvider echo
+      response. This is the v0.2 behavior change — earlier
+      versions silently treated unknown names as fakes, which made
+      "gpt-5" or "gemini-3-pro" overrides look like they succeeded
+      with prompt-echo answers.
     """
     requested = models if models is not None else _DEFAULT_PANEL_MODELS
-    panel: list[Provider] = []
+    panel: list[Provider | _UnknownModel] = []
 
     for model in requested:
         env_key = _REAL_PROVIDER_MODELS.get(model)
         if env_key is None:
-            # Unknown model name — treat as a fake fixture.
-            panel.append(FakeProvider(name=model, behavior="echo"))
+            if model.startswith(_FAKE_MODEL_PREFIX):
+                panel.append(FakeProvider(name=model, behavior="echo"))
+            else:
+                log.warning(
+                    "model %r is not in the panel registry; the panel "
+                    "supports %s. This slot will return an "
+                    "'unknown_model' error.",
+                    model,
+                    sorted(_REAL_PROVIDER_MODELS),
+                )
+                panel.append(_UnknownModel(name=model))
             continue
 
         if not os.environ.get(env_key):
@@ -295,8 +349,64 @@ def build_server() -> Server:
                 )
             ]
 
-        panel = _resolve_panel(inputs.models)
-        output = await dispatch(inputs, panel)
+        resolved = _resolve_panel(inputs.models)
+        providers: list[Provider] = [
+            p for p in resolved if not isinstance(p, _UnknownModel)
+        ]
+        if providers:
+            dispatched = await dispatch(inputs, providers)
+        else:
+            # All entries were unknown-model sentinels (or the caller
+            # passed models=[]). Skip dispatch; emit a zero-cost,
+            # zero-elapsed RoundOutput shell that the merge below
+            # fills with error stubs.
+            current_round = inputs.round if inputs.round is not None else 0
+            dispatched = RoundOutput(
+                round=current_round,
+                responses=[],
+                errors=[],
+                total_elapsed_seconds=0.0,
+                total_cost_usd=0.0,
+            )
+
+        # Weave unknown-model error stubs back into the response in
+        # the caller's original order so the response list is
+        # positionally aligned with inputs.models.
+        dispatched_by_name = {r.model: r for r in dispatched.responses}
+        merged_responses: list[ModelResponse] = []
+        merged_errors: list[ModelError] = list(dispatched.errors)
+        for slot in resolved:
+            if isinstance(slot, _UnknownModel):
+                merged_responses.append(
+                    ModelResponse(
+                        model=slot.name,
+                        answer=None,
+                        elapsed_seconds=0.0,
+                        estimated_cost_usd=None,
+                        error=ErrorClass.UNKNOWN_MODEL,
+                        error_detail=(
+                            f"model {slot.name!r} is not in the panel "
+                            "registry; supported: "
+                            f"{sorted(_REAL_PROVIDER_MODELS)}"
+                        ),
+                    )
+                )
+                merged_errors.append(
+                    ModelError(
+                        model=slot.name,
+                        error=ErrorClass.UNKNOWN_MODEL,
+                    )
+                )
+            else:
+                merged_responses.append(dispatched_by_name[slot.name])
+
+        output = RoundOutput(
+            round=dispatched.round,
+            responses=merged_responses,
+            errors=merged_errors,
+            total_elapsed_seconds=dispatched.total_elapsed_seconds,
+            total_cost_usd=dispatched.total_cost_usd,
+        )
         return [
             types.TextContent(
                 type="text",
