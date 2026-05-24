@@ -130,6 +130,37 @@ class TestErrorClass:
         }
 
 
+class TestJsonSchemaEnumSync:
+    """The MCP INPUT_SCHEMA hand-rolls JSON Schema enums. If the
+    Pydantic Source or ErrorClass enums change and the JSON Schema
+    isn't updated, callers will get validation errors that don't
+    match the server's actual contract. These tests prevent silent
+    drift between the two enum sources of truth.
+    """
+
+    def test_error_class_jsonschema_matches_pydantic(self) -> None:
+        from roundtable.mcp_server import INPUT_SCHEMA
+
+        jsonschema_values = set(
+            INPUT_SCHEMA["properties"]["prior_failures"]["items"][
+                "properties"
+            ]["error_class"]["enum"]
+        )
+        assert jsonschema_values == {e.value for e in ErrorClass}
+
+    def test_source_jsonschema_matches_pydantic(self) -> None:
+        from roundtable.mcp_server import INPUT_SCHEMA
+        from roundtable.schemas import Source
+
+        for field_name in ("prior_answers", "prior_failures"):
+            jsonschema_values = set(
+                INPUT_SCHEMA["properties"][field_name]["items"][
+                    "properties"
+                ]["source"]["enum"]
+            )
+            assert jsonschema_values == {s.value for s in Source}
+
+
 class TestRoundOutput:
     def test_minimal_output(self) -> None:
         out = RoundOutput(

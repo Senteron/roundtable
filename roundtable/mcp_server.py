@@ -38,9 +38,14 @@ log = logging.getLogger("roundtable.mcp_server")
 TOOL_DESCRIPTION = (
     "Dispatch a prompt to a panel of other LLMs in parallel and "
     "return their raw answers. For round 0, pass only the prompt. "
-    "For rounds 1+, also pass the prior round's answers (including "
-    "your own draft) as `prior_answers`; each entry needs `model`, "
-    "`source` ('orchestrator' or 'panelist'), `round`, and `answer`. "
+    "For rounds 1+, also pass the prior round's results: "
+    "`prior_answers` for successful panelists (each entry: `model`, "
+    "`source` 'orchestrator'|'panelist', `round`, `answer`) and "
+    "`prior_failures` for panelists that failed last round (each "
+    "entry: `model`, `source`, `round`, `error_class` 'timeout'|"
+    "'api_error'|'context_overflow'|'invalid_output'). Failed "
+    "panelists are surfaced to the next round as an UNAVAILABLE "
+    "PARTICIPANTS section, separate from peer reasoning. "
     "Treat peer outputs as parallel attempts, not verdicts. Watch "
     "for iteration becoming additive without surfacing substantive "
     "updates or rejections; consolidate rather than expand when "
@@ -63,8 +68,9 @@ INPUT_SCHEMA: dict[str, Any] = {
         "prior_answers": {
             "type": ["array", "null"],
             "description": (
-                "Round 1+ only. Each entry: model, source "
-                "('orchestrator'|'panelist'), round (int), answer."
+                "Round 1+ only. Successful prior-round answers. Each "
+                "entry: model, source ('orchestrator'|'panelist'), "
+                "round (int), answer."
             ),
             "items": {
                 "type": "object",
@@ -78,6 +84,40 @@ INPUT_SCHEMA: dict[str, Any] = {
                     "answer": {"type": "string"},
                 },
                 "required": ["model", "source", "round", "answer"],
+                "additionalProperties": False,
+            },
+        },
+        "prior_failures": {
+            "type": ["array", "null"],
+            "description": (
+                "Round 1+ only. Panelists that failed on the prior "
+                "round. Surfaced as UNAVAILABLE PARTICIPANTS in the "
+                "round-1+ framing (D1). Each entry: model, source, "
+                "round, error_class "
+                "('timeout'|'api_error'|'context_overflow'|"
+                "'invalid_output'). Must share a round number with "
+                "prior_answers if both are provided."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "minLength": 1},
+                    "source": {
+                        "type": "string",
+                        "enum": ["orchestrator", "panelist"],
+                    },
+                    "round": {"type": "integer", "minimum": 0},
+                    "error_class": {
+                        "type": "string",
+                        "enum": [
+                            "timeout",
+                            "api_error",
+                            "context_overflow",
+                            "invalid_output",
+                        ],
+                    },
+                },
+                "required": ["model", "source", "round", "error_class"],
                 "additionalProperties": False,
             },
         },
@@ -149,11 +189,16 @@ def build_server() -> Server:
         try:
             inputs = RoundInput.model_validate(arguments or {})
         except ValidationError as e:
+            # Pydantic's error objects can carry the original
+            # exception in `ctx`, which json.dumps can't serialize.
+            # include_url/include_context off keeps the payload to
+            # plain primitives.
+            detail = e.errors(include_url=False, include_context=False)
             return [
                 types.TextContent(
                     type="text",
                     text=json.dumps(
-                        {"error": "invalid_input", "detail": e.errors()},
+                        {"error": "invalid_input", "detail": detail},
                     ),
                 )
             ]

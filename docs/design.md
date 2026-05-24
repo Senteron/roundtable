@@ -52,11 +52,12 @@ No CLI, no web UI, no FastAPI.
 
 ```python
 {
-    "prompt": str,                       # required, 1..50_000 chars
-    "prior_answers": list[dict] | None,  # optional; None for round 0
-    "models": list[str] | None,          # optional; default panel if None
-    "round": int | None,                 # optional; informational only
-    "per_call_timeout_seconds": int      # optional; default 90, max 180
+    "prompt": str,                        # required, 1..50_000 chars
+    "prior_answers": list[dict] | None,   # optional; None for round 0
+    "prior_failures": list[dict] | None,  # optional; round 1+; D1
+    "models": list[str] | None,           # optional; default panel if None
+    "round": int | None,                  # optional; informational only
+    "per_call_timeout_seconds": int       # optional; default 90, max 180
 }
 ```
 
@@ -72,6 +73,23 @@ Each entry in `prior_answers` has shape:
     "answer": str    # raw text, verbatim
 }
 ```
+
+Each entry in `prior_failures` (D1) has shape:
+
+```python
+{
+    "model": str,        # the panelist that failed last round
+    "source": str,       # "orchestrator" | "panelist"
+    "round": int,        # round whose dispatch produced this failure
+    "error_class": str   # "timeout" | "api_error" |
+                         # "context_overflow" | "invalid_output"
+}
+```
+
+The dispatcher threads `prior_failures` into the round-1+ framing as
+the UNAVAILABLE PARTICIPANTS section (see §3). Failures are carried
+on a separate channel from `prior_answers` so the dispatcher does not
+need to use a truthy-string heuristic on `answer` to classify entries.
 
 **Output schema:**
 
