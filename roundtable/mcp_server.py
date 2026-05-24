@@ -58,7 +58,11 @@ TOOL_DESCRIPTION = (
     "rounds is typical for complex questions; 1-2 is fine for "
     "simple ones. The tool returns each model's response as-is; it "
     "does not synthesize, judge, or vote. A round takes 60-180s "
-    "typically; tell the user it'll take a few minutes."
+    "typically; tell the user it'll take a few minutes. "
+    "`total_cost_usd` in the response reflects panel dispatch only "
+    "(your provider invoices); orchestrator-side tokens are billed "
+    "separately to your Anthropic account and typically dominate by "
+    "10-30x."
 )
 
 INPUT_SCHEMA: dict[str, Any] = {

@@ -579,7 +579,175 @@ Putting these in writing because they're easy to violate by accident:
 
 ---
 
-## 16. For a fresh agent picking up the work
+## 17. Cost reporting: what we measure, what we don't, and why
+
+This section records two decisions made in v0.1.2 about how cost
+information surfaces to users. Both push back against a natural
+instinct to "show more numbers." The instinct is wrong here for
+reasons worth writing down.
+
+### 17.1 `total_cost_usd` reflects panel dispatch only
+
+The `total_cost_usd` field in `RoundOutput` is the sum of
+`estimated_cost_usd` across each provider response, computed from
+the token counts the SDKs return. It is a real measurement, not an
+estimate.
+
+What it does NOT include: the Claude tokens consumed in the
+orchestrator's conversation that called Roundtable. Those are
+billed separately to the user's Anthropic account.
+
+Considered and rejected: adding orchestrator-side token counts to
+`total_cost_usd`. Three reasons:
+
+1. **Roundtable has no access to them.** MCP exposes nothing about
+   the calling conversation's token usage; the tool sees only the
+   `tools/call` payload. Anything we'd report would have to be
+   estimated from response payload size and orchestrator-side
+   heuristics, dressed up as measurement. That's worse than silence.
+2. **It conflates roles.** The orchestrator-vs-panelist distinction
+   is the central architectural decision in this project
+   (§3, §4, §12). Mixing the orchestrator's billing into Roundtable's
+   cost field obscures the boundary the architecture exists to
+   preserve. If Claude-as-panelist ever ships (§8 deferral), *that*
+   provider's cost will land in `total_cost_usd` naturally, alongside
+   OpenAI/Google/DeepSeek — but the orchestrator's own conversation
+   tokens remain Anthropic's billing, not Roundtable's report.
+3. **The orchestrator dominates by 10-30x.** Real numbers from the
+   first end-to-end deliberation: panel cost $0.06 across two
+   rounds, orchestrator cost ~$2. Putting the smaller number in
+   Roundtable's response while silently passing through the larger
+   one would be misleading the wrong way (suggesting Roundtable is
+   the expensive part when it's the cheap part).
+
+The tool description carries a one-line nudge so the orchestrator
+relays this to the user. The README's "What it costs" section
+spells out the two-component model with magnitudes.
+
+### 17.2 No dry-run cost estimator
+
+Considered and rejected: a `dry_run: bool` input that returns an
+estimated cost without dispatching, or a `max_cost_usd` ceiling
+that aborts before dispatch if the estimate exceeds it.
+
+Five reasons:
+
+1. **Pre-dispatch token counts are estimates, not measurements.**
+   The character-per-token ratio varies by tokenizer (tiktoken,
+   sentencepiece, BPE) and by content. The current dispatcher uses
+   a `chars/3.5` heuristic for overflow detection — fine for
+   "fits within 100k tokens?" but produces ±30% errors on cost.
+   A confident-looking $0.05 estimate that's actually $0.04-0.07
+   is the same failure mode as Senteron's
+   `another_round_needed: false` field: load-bearing surface
+   carrying unreliable information (§13.1, §15).
+2. **Output tokens are unknowable pre-dispatch.** A prompt might
+   produce a 50-token answer or a 4000-token answer. Output cost
+   dominates input cost on substantive prompts. An estimator
+   that's good on input and guesses at output is misleading
+   precisely where it matters most.
+3. **The amount saved is small.** Aborting on the estimate saves
+   ~$0.03 in panel cost. The orchestrator already spent ~$0.30-1
+   on the planning that produced the dry-run call. The protected
+   amount is small change next to the cost we cannot help with.
+4. **The orchestrator already has the information.** It has the
+   prompt text and prior bundle in scope, knows roughly how many
+   tokens those are, and knows the per-provider unit prices.
+   Relocating the estimate to a less-informed place (the
+   dispatcher doesn't know what other tools were called in the
+   session, what other costs are accumulating) doesn't add
+   information.
+5. **A `max_cost_usd` ceiling has a worse failure mode.** "Would
+   reject this call as too expensive" isn't `context_overflow`
+   (the prompt fits) or `api_error` (no upstream failure). It's a
+   new error class. Callers who set a safe-looking $0.10 ceiling
+   will hit it on routine 4KB prompts, raise it, and the ceiling
+   becomes inert. Friction-to-value ratio is poor.
+
+Instead: surface what we DO know precisely (per-response token
+counts and per-call cost in `estimated_cost_usd`), and document
+the two-component cost model explicitly in the tool description
+and README. v0.2 may add a `cost_breakdown` field carrying
+prompt_tokens, completion_tokens, and unit prices alongside
+`estimated_cost_usd` — fully measured, audit-friendly.
+
+A dry-run estimator becomes worth building only when (a) real
+per-provider tokenizers replace the heuristic, (b) output cost is
+bounded by a `max_response_tokens` parameter, and (c) the user
+demonstrably needs preflight cost ceilings (none have asked).
+Until all three are true, the feature would mislead more often
+than it helped.
+
+### 17.3 Pricing constants are stale by design
+
+Each provider module declares its input/output prices as
+module-level constants:
+
+```python
+_PRICE_INPUT_PER_M_USD = 2.50   # gpt-4o, as of 2026-05
+_PRICE_OUTPUT_PER_M_USD = 10.00
+```
+
+These are commit-time snapshots and will go stale. They are NOT
+auto-updated. The decision: maintain them manually with a
+deliberate update on every release, rather than fetching live
+pricing at runtime (introduces a network dependency, a failure
+mode, and a privacy surface; not worth it for numbers that are
+already estimates).
+
+`estimated_cost_usd` is therefore "the cost as of this Roundtable
+release," not "the cost as of right now." If the user needs exact
+billing, they verify against their provider invoice. The field is
+for relative reasoning ("this round cost ~10x the trivial test"),
+not for accounting.
+
+### 17.4 Model currency: defaults are validated, not latest
+
+The v0.1 default models — `gpt-4o`, `gemini-2.5-pro`,
+`deepseek-chat` — are the empirical-evidence-validated lineup
+([empirical-evidence.md](empirical-evidence.md) §1.3 fresh runs +
+§13.1 corpus). DeepSeek's `deepseek-chat` is a provider-maintained
+alias that routes to their current production model; the other
+two are specific model snapshots from May 2024 (`gpt-4o`) and
+March 2025 (`gemini-2.5-pro`).
+
+Newer models exist as of v0.1.2 release: `gpt-5`, `gpt-5.1`,
+`gemini-3-pro`. They are NOT the defaults. Three reasons:
+
+1. **The empirical evidence is model-specific.** The
+   99.3%-stop finding, the per-model verbosity ratios, the
+   "GPT flatlines on round 2 of substantive deliberation"
+   observation just produced in the first live round of v0.1.1
+   — all of that comes from this lineup. Bumping defaults
+   invalidates parts of the audit trail without doing the
+   re-validation work to replace it.
+2. **The framing prompt was tuned against this lineup.** The
+   voicemail and log-architecture live tests (§13.2, §13.3)
+   used Opus 4.7 as orchestrator and these three (or close
+   peers) as panelists. The deliberation dynamics the framing
+   prompt encodes were demonstrated against this configuration.
+3. **Pricing and verbosity rebalance with model version.**
+   `gpt-5` has different input/output ratios than `gpt-4o`.
+   `gemini-3` is meaningfully more verbose than `gemini-2.5`.
+   The cost magnitudes in the README ("~$0.03 per substantive
+   round") are calibrated to today's lineup; bumping models
+   silently would invalidate them.
+
+Users who want newer models can override per-call via the
+`models` parameter: `models=["gpt-5", "gemini-3-pro",
+"deepseek-chat"]`. The override mechanism is already wired and
+tested; only the defaults are pinned.
+
+The right time to bump defaults is a v0.2 task: run a side-by-side
+comparison (same prompt, same framing, old vs. new lineup), look
+specifically at whether the multi-round-deliberation dynamics
+hold, update the empirical-evidence audit trail with new findings,
+update the README cost magnitudes. Then bump with documented
+evidence. NOT as a "while I'm here" patch-release change.
+
+---
+
+## Appendix: For a fresh agent picking up the work
 
 The fastest path to productive work:
 
