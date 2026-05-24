@@ -7,7 +7,41 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-(none yet)
+### Added (docs-only, no version bump)
+
+- **`docs/decisions.md §19`** — "Live-run findings: post-deployment
+  evidence." Records four observed patterns from three real
+  deliberations run through the deployed v0.1.x bundle on
+  2026-05-24: (A) GPT-4o is consistently the weakest seat for
+  multi-round / design-reasoning deliberation; (B) DeepSeek's
+  cost-per-insight ratio is anomalously strong (~15× cheaper than
+  GPT/Gemini, yet repeatedly catches things the other two miss);
+  (C) independent convergence on load-bearing flaws the user
+  rationalized is the closest thing the architecture produces to
+  a high-confidence signal; (D) three non-overlapping blind spots
+  in section-5-style "what aren't you asking?" prompts is the
+  modal output and not noise. None of these change v0.1 code; all
+  feed into the v0.2 model-defaults re-validation in §17.4.
+- **`docs/decisions.md §6` clarification** — the framing prompt
+  is the panel-side instruction; the orchestrator's prompt is
+  the other half. Live-run #2 (frontier-model comparison) showed
+  premise-laundering: when the orchestrator's prompt asserts a
+  claim, panel models accept and build on it. Live-run #3
+  (charter review) showed the inverse — an explicit "you may
+  disagree with stated principles" instruction defused the
+  effect. The framing template can't fix a leading orchestrator
+  prompt; the orchestrator has to write one that allows
+  disagreement.
+- **README cost magnitudes** tightened against actual observed
+  costs from runs #1 and #3: substantive round 0 is ~$0.03-0.05
+  panel + ~$0.50-2 orchestrator (was ~$0.03 + ~$0.30-1.00), and a
+  brief note that output tokens dominate per-call cost so richer
+  prompts inflate cost via the response size they elicit.
+
+No version bump. This is a documentation-only update; the bundle
+is unchanged. The v0.1.3 release tag (if cut) attaches the same
+v0.1.2 bundle bytes; users on v0.1.2 don't need to reinstall to
+get the documentation updates — they're visible in the repo.
 
 ## [0.1.2] — 2026-05-24
 
