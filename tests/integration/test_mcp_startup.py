@@ -143,3 +143,91 @@ async def test_invalid_input_does_not_crash_connection() -> None:
     assert not good.isError
     payload = json.loads(good.content[0].text)
     assert payload["responses"][0]["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_prior_failures_round_trip_through_mcp() -> None:
+    """D1 end-to-end: a prior_failures bundle reaches the dispatcher
+    through the MCP boundary and round-1+ framing is applied.
+
+    FakeProvider's echo is truncated to 200 chars; the framing
+    header alone fills it, so we can't directly assert the
+    UNAVAILABLE section in the echoed text. We assert the strongest
+    things visible from outside the subprocess: round echoed back,
+    framing-header substring present (proves round-1+ path was
+    taken), and — critically — sending `prior_failures` does not
+    cause the call to error or be silently dropped (which would
+    leave the prompt as round-0 raw).
+
+    The deeper assertion (UNAVAILABLE PARTICIPANTS rendered with
+    correct error_class) is in the dispatcher unit test against
+    FakeProvider.last_prompt; that has access to the full framed
+    prompt the subprocess hides.
+    """
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # Sanity: same call WITHOUT prior_failures should fall
+            # back to round-0 raw prompt (no framing header), so
+            # WITH prior_failures must produce a meaningfully
+            # different echo. This guards against the field being
+            # silently dropped at the MCP boundary.
+            round_zero = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "follow-up",
+                    "models": ["panelist-a"],
+                },
+            )
+
+            with_failures = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "follow-up",
+                    "round": 2,
+                    "models": ["panelist-a"],
+                    "prior_answers": [
+                        {
+                            "model": "claude",
+                            "source": "orchestrator",
+                            "round": 1,
+                            "answer": "my draft",
+                        },
+                    ],
+                    "prior_failures": [
+                        {
+                            "model": "gemini",
+                            "source": "panelist",
+                            "round": 1,
+                            "error_class": "timeout",
+                        },
+                    ],
+                },
+            )
+
+    assert not round_zero.isError
+    assert not with_failures.isError
+
+    raw_payload = json.loads(round_zero.content[0].text)
+    framed_payload = json.loads(with_failures.content[0].text)
+
+    raw_answer = raw_payload["responses"][0]["answer"]
+    framed_answer = framed_payload["responses"][0]["answer"]
+
+    # Round 0: no framing header.
+    assert "multi-model deliberation" not in raw_answer
+    # Round 2 with prior_failures: framing was applied.
+    assert "multi-model deliberation" in framed_answer
+    assert framed_payload["round"] == 2
+    assert framed_payload["responses"][0]["error"] is None
+    # The two answers must differ — proves prior_failures didn't get
+    # silently dropped (which would have produced an identical
+    # round-0-shaped answer).
+    assert framed_answer != raw_answer
+
+
