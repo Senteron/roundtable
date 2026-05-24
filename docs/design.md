@@ -65,7 +65,10 @@ Each entry in `prior_answers` has shape:
 ```python
 {
     "model": str,    # e.g. "gpt-4o", "gemini-2.5-pro", "claude"
-    "version": int,  # which round produced this answer
+    "source": str,   # "orchestrator" | "panelist" (required, per D2)
+    "round": int,    # which round produced this answer (renamed from
+                     # "version" per D3 to avoid collision with
+                     # provider/model versioning)
     "answer": str    # raw text, verbatim
 }
 ```
@@ -102,8 +105,16 @@ Each entry in `prior_answers` has shape:
   member's own), and explicit instructions to revise *its own* answer
   rather than synthesize.
 - A model failure (timeout, API error, schema validation failure on
-  output) returns an error stub for that model only. The round
-  proceeds; `responses` always contains one entry per requested model.
+  output, or framed prompt exceeding the provider's context window per
+  D4) returns an error stub for that model only. The round proceeds;
+  `responses` always contains one entry per requested model. The
+  `error` field uses a stable string class so callers can distinguish
+  cases without parsing prose: `"timeout"`, `"api_error"`,
+  `"context_overflow"`, `"invalid_output"`.
+- Failed responses are **not** included in `PANEL ANSWERS` on the next
+  round (D1). The round-1+ framing template renders an `UNAVAILABLE
+  PARTICIPANTS` section listing model name and error class when at
+  least one panelist failed the prior round. See §3 for the template.
 - The tool never raises through to the MCP client unless input
   validation fails. A round where 3 of 3 panelists time out returns a
   valid response object with three error stubs and `total_elapsed_seconds`
@@ -125,6 +136,13 @@ These are not optional; the two live tests we ran (voicemail and log
 architecture) showed Opus 4.7 doing exactly these things when prompted
 to, and not reliably doing them when prompted only to "consider these
 critiques."
+
+**The tool description is part of the version contract** (D5). Material
+changes to the text in [mcpb/manifest.json](../mcpb/manifest.json)'s
+`tools[].description` require the same discipline as changes to the
+framing prompt in §3: minor version bump in both
+[pyproject.toml](../pyproject.toml) and
+[mcpb/manifest.json](../mcpb/manifest.json), plus a CHANGELOG entry.
 
 ### 2.2 Tool: nothing else
 
@@ -178,11 +196,24 @@ PANEL ANSWERS (round {previous_round}):
 {answer_n}
 
 ---
+UNAVAILABLE PARTICIPANTS (round {previous_round}):
+
+[{failed_model_1}] {error_class_1}
+[{failed_model_2}] {error_class_2}
+
+---
 This is round {current_round}.
 ```
 
 Notes:
 
+- The `UNAVAILABLE PARTICIPANTS` section is **omitted entirely** when
+  every panelist succeeded on the prior round (D1). It appears, with
+  the trailing `---` divider, only when at least one panelist failed.
+  Error classes use the stable strings from §2.1 (`"timeout"`,
+  `"api_error"`, `"context_overflow"`, `"invalid_output"`).
+- Failed responses are not rendered as `PANEL ANSWERS` entries; this
+  prevents an error stub from being treated as peer reasoning.
 - No `CONVERGED:` / `NEEDS_ANOTHER_ROUND:` sentinel. Empirically those
   produced 99.3% performative stops in 67 real runs of Senteron's
   existing pipeline.
@@ -297,12 +328,13 @@ This is the only place where exceptions cross a layer boundary.
 
 ### 4.2 Timeouts
 
-Three layers, all enforced via `asyncio.wait_for` and provider SDK
+Two layers (D6), enforced via `asyncio.wait_for` and provider SDK
 timeout parameters where available:
 
-- **Per-call**: default 90s, max 180s, set via `per_call_timeout_seconds`
-  on the tool input.
-- **Per-round**: derived from per-call; the dispatcher gathers with
+- **Per-provider call**: default 90s, max 180s, configurable via
+  `per_call_timeout_seconds` on the tool input.
+- **Whole-round** (the MCP-call wall clock): derived from per-call,
+  not separately configurable in v0.1. The dispatcher gathers with
   `return_exceptions=True` so a slow model doesn't block a fast one
   past its own deadline. Total round time is bounded by
   `per_call_timeout_seconds` plus small overhead.
@@ -321,11 +353,18 @@ This is tested explicitly with `FakeProvider(behavior="timeout")` and
 
 ### 4.4 No filesystem writes
 
-The tool never writes to disk during a call. This is testable:
-`tests/unit/test_no_disk_writes.py` runs a real round (against
-`FakeProvider`) inside a pyfakefs context with the cwd, tempdir, and
-home all snapshotted before and after; the round must not produce any
-new files.
+The tool never writes to disk during a call. This is testable for
+**Roundtable-owned code** (D7): `tests/unit/test_no_disk_writes.py`
+runs a round against `FakeProvider` inside a pyfakefs context with the
+cwd, tempdir, and home all snapshotted before and after; the round
+must not produce any new files.
+
+Provider SDK behavior (credential caches, telemetry files written by
+`openai`/`google-genai`/`httpx`) is **out of scope** for this test.
+The privacy invariant Roundtable enforces is "Roundtable does not
+persist prompts or answers." A stronger real-provider test asserting
+that no prompt/answer *content* ever lands on disk is deferred to
+v0.2.
 
 Stdout/stderr is allowed (MCP protocol uses stdio for transport, and
 debug logging goes to stderr). The invariant is files, not all I/O.
@@ -443,11 +482,25 @@ priority order:
   populated; assert the prompt seen by the `FakeProvider`s contains
   the round-1+ framing text and the bundle.
 
-### 6.3 Live tests (manual, gated by env vars)
+### 6.3 Live tests (maintainer smoke, gated by env vars)
 
 A `pytest -m live` marker runs a single end-to-end test against real
-providers. It is *not* run in CI. It exists so the maintainer can
-verify a real round trip after a credential or SDK change.
+providers. It is *not* run in CI and is **not a release gate** (D8).
+It exists so the maintainer can verify a real round trip after a
+credential or SDK change.
+
+Release procedure: before tagging, the maintainer runs `pytest -m
+live` locally with the relevant API keys, pastes the result into the
+release PR description, and tags. Failure of `-m live` does not
+automatically block the tag but requires written justification in the
+PR description (e.g., "Google returned 503 thrice in 5 minutes;
+verified the request path manually against the playground").
+
+Rationale: provider APIs are routinely flaky (cold-start latency,
+intermittent 5xx, regional quota). A hard gate would either invite
+forbidden retry logic in the test, or get weakened silently when it
+became inconvenient. A documented smoke check gives the same signal
+without the brittleness.
 
 ### 6.4 What's not tested in v0.1
 
@@ -485,6 +538,12 @@ error from input validation rather than from a provider call.
 ---
 
 ## 8. Implementation sequence
+
+**Superseded by [docs/review-concerns-plan.md](./review-concerns-plan.md).**
+The plan there (P0–P5) is the authoritative sequencing for v0.1, and
+incorporates contract decisions (D1–D9) that post-date this section.
+The original step list below remains as historical context, but read
+the plan first.
 
 Each step is one commit, reviewable independently. Steps build on each
 other but don't combine unrelated changes.
