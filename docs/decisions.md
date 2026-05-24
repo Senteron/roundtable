@@ -447,20 +447,30 @@ knowing about because if they're contradicted by future evidence, the
 design should update.
 
 **13.1 The Senteron corpus analysis.** 67 real peer_review runs over
-14 weeks. Key findings:
+14 weeks, plus 5 fresh comparison runs added 2026-05-23/24 (72 total,
+146 model votes). Key findings:
 
-- 66 of 67 runs ended after 1 head-to-head round.
-- 99.3% of vote events were "stop" (135 of 136).
+- 71 of 72 runs ended after 1 head-to-head round.
+- 99.3% of vote events were "stop" (145 of 146).
 - 32% of `continuation_reason` strings were the exact phrase "No
   material changes expected."
 - The boilerplate phrase appeared as a *prefix* even on substantive
   reasons, suggesting the prompt was forcing it.
-- One model (Mistral) was the only one that ever voted continue.
+- One model (Mistral) was the only one that ever voted continue
+  (8.3% of its own votes; 0% for every other model).
 - 22663s (6+ hour) runaway in the provenance stage in one run; no
   timeout enforcement caught it.
+- 10% per-call error rate from `MODEL_ERROR` events; justifies
+  N-1 panel tolerance directly.
 
 This is the evidence behind: no vote field, no synthesis stage, no
-hard round cap, no provenance stage, network-layer timeouts only.
+hard round cap, no provenance stage, network-layer timeouts only,
+N-1 panel tolerance.
+
+**Full receipts** — run IDs, verbatim boilerplate-vote citations,
+per-model vote and cost tables, per-stage latency percentiles — are
+in [empirical-evidence.md](./empirical-evidence.md). Read that doc
+before re-litigating a settled design question.
 
 **13.2 The voicemail flash-fiction test.** Same prompt sent to GPT-4o,
 Claude Sonnet 4.5, and Gemini 2.5 Pro in parallel. Then a separate

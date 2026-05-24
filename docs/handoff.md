@@ -18,6 +18,11 @@ first; it's a map, not the work.
    but defer to the plan in (3) above for sequencing.
 5. [docs/decisions.md](./decisions.md) — the *why* behind each design
    choice. Long but high signal; read at least §3, §6, §7, §15.
+6. [docs/empirical-evidence.md](./empirical-evidence.md) — the
+   receipts. Only read this if you're about to re-litigate a settled
+   design question (vote-to-continue, persistence, synthesis stage,
+   timeout defaults, panel composition) or if a reviewer asks where
+   a specific number came from.
 
 ## Current state
 
