@@ -16,6 +16,11 @@ Decisions enforced by these models:
   round produced the answer.
 - D4: `ErrorClass` includes `context_overflow` as a stable string
   for oversize framed prompts.
+- v0.2: `ErrorClass.UNKNOWN_MODEL` distinguishes "the caller named a
+  model the panel registry doesn't know about" from any in-flight
+  provider failure. Emitted by `_resolve_panel` before dispatch, so
+  the orchestrator can see the slot failed without having to sniff
+  for a prompt-echo response from the old silent-FakeProvider path.
 - P3.5: `RoundInput` enforces that all `prior_answers` and
   `prior_failures` entries share a single round number. The tool
   description and the framing template both presume a coherent
@@ -41,6 +46,7 @@ class ErrorClass(str, Enum):
     API_ERROR = "api_error"
     CONTEXT_OVERFLOW = "context_overflow"
     INVALID_OUTPUT = "invalid_output"
+    UNKNOWN_MODEL = "unknown_model"
 
 
 class PriorAnswer(BaseModel):

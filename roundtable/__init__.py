@@ -6,4 +6,4 @@ lives in Claude's conversation, not in this package.
 See README.md and CLAUDE.md for design rationale and invariants.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

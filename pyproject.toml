@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roundtable"
-version = "0.1.2"
+version = "0.2.0"
 description = "MCP tool for multi-model deliberation. Claude consults a panel of other models, refines its own answer through iterative critique."
 readme = "README.md"
 license = { text = "Apache-2.0" }
