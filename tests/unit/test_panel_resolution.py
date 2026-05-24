@@ -110,12 +110,12 @@ def test_unknown_model_name_resolves_to_unknown_sentinel(
     _strip_provider_keys(monkeypatch)
     caplog.set_level(logging.WARNING, logger="roundtable.mcp_server")
 
-    panel = _resolve_panel(["gpt-5.5"])
+    panel = _resolve_panel(["gpt-9"])
 
     assert len(panel) == 1
     assert isinstance(panel[0], _UnknownModel)
-    assert panel[0].name == "gpt-5.5"
-    assert "gpt-5.5" in caplog.text
+    assert panel[0].name == "gpt-9"
+    assert "gpt-9" in caplog.text
     assert "panel registry" in caplog.text
 
 
@@ -148,11 +148,70 @@ def test_mixed_known_unknown_and_fake_preserves_order(
     """
     _strip_provider_keys(monkeypatch)
 
-    panel = _resolve_panel(["gpt-4o", "gpt-5.5", "fake-a"])
+    panel = _resolve_panel(["gpt-4o", "gpt-9", "fake-a"])
 
     assert len(panel) == 3
     # gpt-4o has no key set, so it lands as FakeProvider (existing
     # missing-key fallback behavior).
     assert isinstance(panel[0], FakeProvider) and panel[0].name == "gpt-4o"
-    assert isinstance(panel[1], _UnknownModel) and panel[1].name == "gpt-5.5"
+    assert isinstance(panel[1], _UnknownModel) and panel[1].name == "gpt-9"
     assert isinstance(panel[2], FakeProvider) and panel[2].name == "fake-a"
+
+
+@pytest.mark.parametrize(
+    "model,env_key",
+    [
+        ("gpt-5", "OPENAI_API_KEY"),
+        ("gpt-5.1", "OPENAI_API_KEY"),
+        ("gpt-5.5", "OPENAI_API_KEY"),
+        ("gemini-3.1-pro-preview", "GOOGLE_API_KEY"),
+        ("deepseek-reasoner", "DEEPSEEK_API_KEY"),
+    ],
+)
+def test_new_registry_models_resolve_to_real_provider_when_key_set(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+    env_key: str,
+) -> None:
+    """v0.3.0 registry widening: each newly-added model name must
+    route to its real provider when the matching env var is set, and
+    must NOT route to FakeProvider or _UnknownModel.
+    """
+    _strip_provider_keys(monkeypatch)
+    monkeypatch.setenv(env_key, "test-key-stub")
+
+    panel = _resolve_panel([model])
+
+    assert len(panel) == 1
+    assert not isinstance(panel[0], FakeProvider)
+    assert not isinstance(panel[0], _UnknownModel)
+    assert panel[0].name == model
+
+
+@pytest.mark.parametrize(
+    "model,env_key",
+    [
+        ("gpt-5", "OPENAI_API_KEY"),
+        ("gpt-5.1", "OPENAI_API_KEY"),
+        ("gpt-5.5", "OPENAI_API_KEY"),
+        ("gemini-3.1-pro-preview", "GOOGLE_API_KEY"),
+        ("deepseek-reasoner", "DEEPSEEK_API_KEY"),
+    ],
+)
+def test_new_registry_models_fall_back_to_fake_when_key_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+    env_key: str,
+) -> None:
+    """Same missing-key behavior as the v0.1 defaults: when the
+    provider's env var is unset, the override slot falls back to a
+    FakeProvider rather than an _UnknownModel sentinel. _UnknownModel
+    is reserved for names that aren't in the registry at all.
+    """
+    _strip_provider_keys(monkeypatch)
+
+    panel = _resolve_panel([model])
+
+    assert len(panel) == 1
+    assert isinstance(panel[0], FakeProvider)
+    assert panel[0].name == model

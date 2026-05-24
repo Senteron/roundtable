@@ -27,14 +27,23 @@ from google.genai import types as genai_types
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# Gemini public pricing, USD per 1M tokens (commit-time estimate).
+# Gemini public pricing, USD per 1M tokens (commit-time estimate;
+# <=200K tier).
 # https://ai.google.dev/gemini-api/docs/pricing
 _PRICING: dict[str, tuple[float, float]] = {
     "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-3.1-pro-preview": (2.00, 12.00),
+}
+
+# Per-model max input/context window in tokens. Source: each
+# model's page under https://ai.google.dev/gemini-api/docs/models/
+_CONTEXT_WINDOWS: dict[str, int] = {
+    "gemini-2.5-pro": 1_000_000,
+    "gemini-3.1-pro-preview": 1_048_576,
 }
 
 DEFAULT_MODEL = "gemini-2.5-pro"
-CONTEXT_WINDOW_TOKENS = 1_000_000
+CONTEXT_WINDOW_TOKENS = _CONTEXT_WINDOWS[DEFAULT_MODEL]
 
 _ENV_KEY = "GOOGLE_API_KEY"
 

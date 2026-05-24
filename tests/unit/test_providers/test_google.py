@@ -125,3 +125,9 @@ def test_cost_is_none_for_unknown_model() -> None:
 def test_cost_is_known_for_listed_model() -> None:
     assert _estimate_cost_usd("gemini-2.5-pro", 1_000_000, 0) == pytest.approx(1.25)
     assert _estimate_cost_usd("gemini-2.5-pro", 0, 1_000_000) == pytest.approx(10.00)
+
+
+def test_gemini_3_1_pro_preview_has_documented_price() -> None:
+    # <=200K tier per the published pricing page.
+    assert _estimate_cost_usd("gemini-3.1-pro-preview", 1_000_000, 0) == pytest.approx(2.00)
+    assert _estimate_cost_usd("gemini-3.1-pro-preview", 0, 1_000_000) == pytest.approx(12.00)

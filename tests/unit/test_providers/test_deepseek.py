@@ -47,7 +47,7 @@ def test_constructor_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake")
     p = DeepSeekProvider()
     assert p.name == "deepseek-chat"
-    assert p.context_window_tokens == 64_000
+    assert p.context_window_tokens == 1_000_000
 
 
 @pytest.mark.asyncio
@@ -120,6 +120,10 @@ def test_cost_is_none_for_unknown_model() -> None:
     assert _estimate_cost_usd("not-a-real-model", 100, 50) is None
 
 
-def test_cost_is_known_for_listed_model() -> None:
-    assert _estimate_cost_usd("deepseek-chat", 1_000_000, 0) == pytest.approx(0.27)
-    assert _estimate_cost_usd("deepseek-chat", 0, 1_000_000) == pytest.approx(1.10)
+@pytest.mark.parametrize("model", ["deepseek-chat", "deepseek-reasoner"])
+def test_cost_is_known_for_listed_model(model: str) -> None:
+    # Per the May 2026 DeepSeek consolidation onto deepseek-v4-flash:
+    # both legacy names share the cache-miss tier of 0.14 input /
+    # 0.28 output per 1M tokens.
+    assert _estimate_cost_usd(model, 1_000_000, 0) == pytest.approx(0.14)
+    assert _estimate_cost_usd(model, 0, 1_000_000) == pytest.approx(0.28)

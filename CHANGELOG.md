@@ -7,19 +7,63 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Maintenance (no behavior change)
+## [0.3.0] — 2026-05-24
+
+### Added
+
+- **Wider panel registry.** The `models` override now accepts five
+  additional snapshots in addition to the v0.1 defaults:
+  - OpenAI: `gpt-5` (400K context), `gpt-5.1` (400K context),
+    `gpt-5.5` (1.05M context; inputs over 272K cost 2× input /
+    1.5× output per OpenAI's tier rule).
+  - Google: `gemini-3.1-pro-preview` (1.05M context). The earlier
+    `gemini-3-pro-preview` snapshot was shut down by Google on
+    2026-03-09 and is not added here; `gemini-3.1-pro-preview` is
+    the live successor.
+  - DeepSeek: `deepseek-reasoner` (1M context). Both
+    `deepseek-chat` and `deepseek-reasoner` now alias
+    `deepseek-v4-flash` (non-thinking and thinking modes); the
+    legacy names are scheduled for sunset 2026-07-24.
+
+  Pricing entries for each new model are taken from the
+  corresponding provider's public docs (May 2026). All new entries
+  ride on the same `_PRICING` per-model lookup that the Unreleased
+  refactor introduced — so an override pointed at a model whose
+  price isn't yet calibrated continues to report `None` cost rather
+  than be billed at the default model's rate.
+
+### Changed (orchestrator-visible)
+
+- **Tool description and `models` schema description** updated to
+  list the wider registry. The default panel composition
+  (`gpt-4o` + `gemini-2.5-pro` + `deepseek-chat`) is unchanged;
+  newer snapshots are available only as overrides because the
+  framing-prompt empirical validation (`docs/decisions.md §17.4`)
+  was calibrated against the v0.1 lineup and a re-validation
+  against the new snapshots is deferred to a later release. The
+  tool description and framing prompt are the two version-bump-
+  discipline strings per `CLAUDE.md`; the framing prompt is
+  unchanged in this release.
+- **`deepseek-chat` pricing and context window corrected** to
+  reflect DeepSeek's May 2026 consolidation onto
+  `deepseek-v4-flash`. Was `0.27 / 1.10 USD per 1M tokens` with a
+  64K context window; now `0.14 / 0.28 USD per 1M tokens` (cache-
+  miss tier) with a 1M context window. The default-panel slot for
+  this provider now reports lower per-call cost and tolerates much
+  longer prompts before triggering context-overflow guards.
+
+### Refactor (no observable behavior change)
 
 - **Per-model pricing tables in providers.** Each provider
   (`openai.py`, `google.py`, `deepseek.py`) now keys cost lookup off
   a `_PRICING: dict[str, tuple[float, float]]` table rather than
   module-global input/output constants. `_estimate_cost_usd` takes
-  the model name and returns `None` when the name is not in the
-  table — so a future override pointed at a model whose price isn't
-  yet calibrated will report no cost rather than be billed at the
-  default model's rate. The currently-shipped registry
-  (`gpt-4o`, `gemini-2.5-pro`, `deepseek-chat`) has identical
-  prices and identical behavior to 0.2.0; this is a refactor that
-  enables widening the registry in a later release.
+  the model name and returns `None` when the name is absent — so a
+  future override pointed at a model whose price isn't yet
+  calibrated reports no cost rather than being billed at the
+  default model's rate. Landed as PR #21 ahead of the registry
+  widening so it could be reverted independently if a price entry
+  turned out to be miscalibrated.
 
 ## [0.2.0] — 2026-05-24
 

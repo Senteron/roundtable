@@ -724,7 +724,11 @@ two are specific model snapshots from May 2024 (`gpt-4o`) and
 March 2025 (`gemini-2.5-pro`).
 
 Newer models exist as of v0.1.2 release: `gpt-5`, `gpt-5.1`,
-`gemini-3-pro`. They are NOT the defaults. Three reasons:
+`gpt-5.5`, `gemini-3.1-pro-preview` (the `gemini-3-pro-preview`
+snapshot was shut down by Google on 2026-03-09 and is not
+available), `deepseek-reasoner`. As of v0.3.0 they are all
+override-accessible via `models=[...]` but they are NOT the
+defaults. Three reasons:
 
 1. **The empirical evidence is model-specific.** The
    99.3%-stop finding, the per-model verbosity ratios, the
@@ -746,11 +750,11 @@ Newer models exist as of v0.1.2 release: `gpt-5`, `gpt-5.1`,
    silently would invalidate them.
 
 Users who want newer models can override per-call via the
-`models` parameter: `models=["gpt-5", "gemini-3-pro",
-"deepseek-chat"]`. The override mechanism is already wired and
-tested; only the defaults are pinned.
+`models` parameter: `models=["gpt-5.1",
+"gemini-3.1-pro-preview", "deepseek-reasoner"]`. The override
+mechanism is wired in v0.3.0; only the defaults are pinned.
 
-The right time to bump defaults is a v0.2 task: run a side-by-side
+The right time to bump defaults is a later task: run a side-by-side
 comparison (same prompt, same framing, old vs. new lineup), look
 specifically at whether the multi-round-deliberation dynamics
 hold, update the empirical-evidence audit trail with new findings,

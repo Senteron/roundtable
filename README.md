@@ -3,14 +3,16 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.2.0. Real OpenAI / Google / DeepSeek dispatch when
+**Status:** v0.3.0. Real OpenAI / Google / DeepSeek dispatch when
 the corresponding API key is configured; transparent fallback to a
 placeholder `FakeProvider` (with a clear stderr warning) for any
 provider whose key is missing, so the server boots and runs even
-with no keys configured. As of v0.2.0, a `models` override that
-names something outside the panel registry (e.g. `gpt-5`,
-`gemini-3-pro`) returns `error_class: "unknown_model"` for that
-slot rather than silently emitting a prompt-echo placeholder.
+with no keys configured. v0.3.0 widens the panel registry: the
+default panel still runs `gpt-4o` + `gemini-2.5-pro` +
+`deepseek-chat`, but the `models` override now also accepts
+`gpt-5`, `gpt-5.1`, `gpt-5.5`, `gemini-3.1-pro-preview`, and
+`deepseek-reasoner`. The `unknown_model` error class (from v0.2.0)
+still fires for any name outside this list.
 
 ## What it does
 
@@ -38,10 +40,10 @@ shuffling text between browser tabs.
 The current installable `.mcpb` bundle is committed to
 [dist/](dist/). To install in Claude Desktop:
 
-1. Download `dist/roundtable-0.2.0.mcpb` from this repo (or grab it
-   from the [v0.2.0 release page](https://github.com/Senteron/roundtable/releases/tag/v0.2.0)).
-2. Verify the checksum against `dist/roundtable-0.2.0.mcpb.sha256`
-   (`shasum -a 256 -c roundtable-0.2.0.mcpb.sha256`).
+1. Download `dist/roundtable-0.3.0.mcpb` from this repo (or grab it
+   from the [v0.3.0 release page](https://github.com/Senteron/roundtable/releases/tag/v0.3.0)).
+2. Verify the checksum against `dist/roundtable-0.3.0.mcpb.sha256`
+   (`shasum -a 256 -c roundtable-0.3.0.mcpb.sha256`).
 3. Open Claude Desktop → Settings → Extensions → Install from file →
    select the `.mcpb`.
 
@@ -129,18 +131,13 @@ and chose not to ship one; the reasoning is in
 
 ## What models does the panel use?
 
-The v0.1 default lineup:
+The v0.1 default lineup, unchanged through v0.3:
 
 | Provider | Default model | Snapshot |
 | --- | --- | --- |
 | OpenAI | `gpt-4o` | May 2024 (pinned) |
 | Google | `gemini-2.5-pro` | March 2025 (pinned) |
-| DeepSeek | `deepseek-chat` | Provider-maintained alias |
-
-The OpenAI and Google entries are specific model snapshots; newer
-versions (`gpt-5`/`gpt-5.1`, `gemini-3-pro`) exist but aren't the
-default. DeepSeek's `deepseek-chat` is a provider-maintained alias
-that routes to their current production chat model.
+| DeepSeek | `deepseek-chat` | Alias; now backs onto `deepseek-v4-flash` |
 
 **Why not the latest?** The defaults are pinned to the lineup that
 the project's empirical evidence is calibrated against — the corpus
@@ -148,28 +145,43 @@ analysis, framing-prompt tuning, per-model behavioral observations,
 and cost magnitudes in this README all measure *these specific
 models*. Bumping defaults without re-running that validation would
 invalidate parts of the audit trail. The full reasoning is in
-[docs/decisions.md §17.4](docs/decisions.md). Updating defaults is a
-v0.2 task scheduled to land with side-by-side re-validation.
+[docs/decisions.md §17.4](docs/decisions.md).
 
 **The `models` override** lets you change which subset of the
-registry runs, e.g. dropping a slot or running a single-model
-panel:
+registry runs, e.g. dropping a slot, running a single-model panel,
+or swapping in a newer snapshot:
 
 ```python
 roundtable_round(
     prompt="...",
     models=["gpt-4o", "deepseek-chat"],   # two-model panel
 )
+
+roundtable_round(
+    prompt="...",
+    models=["gpt-5.1", "gemini-3.1-pro-preview", "deepseek-reasoner"],
+)
 ```
 
-It does **not** currently let you switch to newer model snapshots
-like `gpt-5`, `gpt-5.1`, or `gemini-3-pro`. Those names aren't in
-the panel registry yet, and as of v0.2.0 supplying one returns
-`error_class: "unknown_model"` for that slot (pre-0.2.0 silently
-echoed the prompt back, which was indistinguishable from a real
-answer to an orchestrator). Adding new snapshots requires a panel
-registry change and provider re-validation — tracked as the v0.2
-defaults task in [docs/decisions.md §17.4](docs/decisions.md).
+As of v0.3.0, the override registry is:
+
+| API model string | Routes via | Notes |
+| --- | --- | --- |
+| `gpt-4o` | OpenAI | Default |
+| `gpt-5` | OpenAI | 400K context |
+| `gpt-5.1` | OpenAI | 400K context |
+| `gpt-5.5` | OpenAI | 1.05M context; >272K inputs cost 2×/1.5× |
+| `gemini-2.5-pro` | Google | Default |
+| `gemini-3.1-pro-preview` | Google | Successor to `gemini-3-pro-preview` (shut down 2026-03-09) |
+| `deepseek-chat` | DeepSeek | Default; aliases v4-flash non-thinking |
+| `deepseek-reasoner` | DeepSeek | Aliases `deepseek-v4-flash` thinking mode |
+
+Names outside this list still return `error_class:
+"unknown_model"` for that slot (the v0.2.0 behavior; pre-0.2.0
+silently echoed the prompt back). The framing-prompt empirical
+validation was calibrated against the v0.1 lineup; the newer
+snapshots are usable as overrides but a full re-validation is
+deferred to a later release.
 
 ## License
 
