@@ -1,0 +1,94 @@
+name: MCPB freshness
+
+# Gates merges on dist/roundtable-<version>.mcpb being a faithful
+# build of the current roundtable/ tree. Without this, contributors
+# can edit roundtable/ without rebuilding the bundle, and Claude
+# Desktop users silently run the old MCP server even after they
+# "update" the extension. See CLAUDE.md "Always rebuild the .mcpb
+# bundle when MCP code changes" for the full rule.
+#
+# The check only runs when roundtable/ or the build inputs change,
+# so unrelated PRs don't pay the install-node tax.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "roundtable/**"
+      - "mcpb/**"
+      - "dist/roundtable-*.mcpb"
+      - "dist/roundtable-*.mcpb.sha256"
+      - "scripts/check_mcpb_freshness.sh"
+      - ".github/workflows/mcpb-up-to-date.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "roundtable/**"
+      - "mcpb/**"
+      - "dist/roundtable-*.mcpb"
+      - "dist/roundtable-*.mcpb.sha256"
+      - "scripts/check_mcpb_freshness.sh"
+      - ".github/workflows/mcpb-up-to-date.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node (for @anthropic-ai/mcpb)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install runtime dependencies
+        # mcpb/build.sh imports roundtable.mcp_server to read
+        # TOOL_DESCRIPTION at bundle time. That import pulls in mcp,
+        # pydantic, etc. Install the runtime deps (not the full dev
+        # set — pytest etc. aren't needed here) so the build can
+        # complete in CI.
+        run: pip install mcp pydantic
+
+      - name: Check bundle freshness
+        run: ./scripts/check_mcpb_freshness.sh
+
+      - name: Verify committed SHA256 matches the bundle bytes
+        # The sidecar is part of the install handshake (operators
+        # check it before unzipping). If it drifts from the
+        # artifact, callers have no way to detect tampering.
+        #
+        # Note: this check verifies the sidecar matches the committed
+        # bundle. It does NOT verify the bundle bytes match a fresh
+        # build. The .mcpb is a zip and zips are not byte-deterministic
+        # across builds (mtime, compression order). The "is the bundle
+        # current?" check is the previous step (check_mcpb_freshness.sh),
+        # which diffs extracted contents, not zip bytes.
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 -c "import json; print(json.load(open('mcpb/manifest.json'))['version'])")"
+          ARTIFACT="dist/roundtable-${VERSION}.mcpb"
+          SIDECAR="${ARTIFACT}.sha256"
+          if [[ ! -f "$SIDECAR" ]]; then
+            echo "✘ Missing $SIDECAR" >&2
+            echo "  Run: shasum -a 256 $ARTIFACT > $SIDECAR" >&2
+            exit 1
+          fi
+          EXPECTED="$(awk '{print $1}' "$SIDECAR")"
+          ACTUAL="$(shasum -a 256 "$ARTIFACT" | awk '{print $1}')"
+          if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+            echo "✘ $SIDECAR is out of sync with $ARTIFACT." >&2
+            echo "  Expected: $EXPECTED" >&2
+            echo "  Actual:   $ACTUAL" >&2
+            echo "  Run: shasum -a 256 $ARTIFACT > $SIDECAR" >&2
+            exit 1
+          fi
+          echo "✔ $SIDECAR matches $ARTIFACT ($ACTUAL)"

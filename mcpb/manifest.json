@@ -1,5 +1,5 @@
 {
-  "manifest_version": "0.2",
+  "manifest_version": "0.3",
   "name": "roundtable",
   "display_name": "Roundtable",
   "version": "0.1.0",
@@ -15,13 +15,31 @@
   },
   "homepage": "https://github.com/Senteron/roundtable",
   "documentation": "https://github.com/Senteron/roundtable/blob/main/README.md",
-  "icon": null,
   "server": {
     "type": "python",
     "entry_point": "roundtable/__main__.py",
     "mcp_config": {
-      "command": "python",
-      "args": ["-m", "roundtable"]
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "-m",
+        "roundtable"
+      ],
+      "env": {
+        "ANTHROPIC_API_KEY": "${user_config.ANTHROPIC_API_KEY}",
+        "OPENAI_API_KEY": "${user_config.OPENAI_API_KEY}",
+        "GOOGLE_API_KEY": "${user_config.GOOGLE_API_KEY}",
+        "DEEPSEEK_API_KEY": "${user_config.DEEPSEEK_API_KEY}"
+      }
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.11.0 <4"
     }
   },
   "tools": [

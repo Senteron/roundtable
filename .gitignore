@@ -15,6 +15,10 @@ build/
 venv/
 env/
 
+# uv lockfile (the bundle pins via mcpb/pyproject.toml; the lockfile
+# is for local reproducibility only and shouldn't be reviewed)
+uv.lock
+
 # Environment / secrets
 .env
 .env.*
