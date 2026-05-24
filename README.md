@@ -99,10 +99,14 @@ pricing; verify against your invoice):
 | Round shape | Panel (measured) | Orchestrator (est.) |
 | --- | --- | --- |
 | Trivial round 0 ("Reply OK") | ~$0.0001 | ~$0.05–0.10 |
-| Substantive round 0 (see note) | ~$0.03 | ~$0.30–1.00 |
-| 3-round deliberation, same scale | ~$0.10–0.30 | ~$1–3 |
+| Substantive round 0 (see note) | ~$0.03–0.05 | ~$0.50–2 |
+| Two-round deliberation, same scale | ~$0.05–0.10 | ~$1–3 |
 
-*Substantive round 0 = ~3 KB prompt, ~4 KB total panel output.*
+*Substantive round 0 = 3–7 KB prompt, 4–8 KB total panel output.*
+Output tokens dominate per-call cost at every provider (output is
+priced 4–8× higher than input), so richer prompts tend to inflate
+cost via the *response* size they elicit rather than via their own
+input size.
 
 **The orchestrator dominates total cost, typically by 10–30×.**
 This is a property of how MCP and conversational LLMs work: Claude

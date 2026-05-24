@@ -219,6 +219,18 @@ where the design's quality lives or dies.
 **The framing prompt is part of the version contract.** Changes to it
 require a minor version bump and a CHANGELOG entry. See `CLAUDE.md`.
 
+**The framing prompt is the panel-side instruction; the
+orchestrator's prompt is the other half of the system.** Live-run
+experience (§19.4) shows that the framing template's "reject what
+is wrong" instruction grips only when the orchestrator's prompt
+to the panel invites the panel to question premises. When the
+orchestrator asserts a claim as fact in its framing of the
+question, panel models accept and build on it rather than
+questioning — and four models repeating an unverified premise
+from the prompt is NOT four-way confirmation of it. The framing
+template can't fix a leading orchestrator prompt; the
+orchestrator has to write one that allows disagreement.
+
 ---
 
 ## 7. The orchestrator-quality threshold
@@ -744,6 +756,178 @@ specifically at whether the multi-round-deliberation dynamics
 hold, update the empirical-evidence audit trail with new findings,
 update the README cost magnitudes. Then bump with documented
 evidence. NOT as a "while I'm here" patch-release change.
+
+---
+
+## 19. Live-run findings: post-deployment evidence
+
+This section records observations from real deliberations run
+through the deployed v0.1.x Roundtable bundle, as distinct from
+the pre-deployment corpus and live tests in §13 (which produced
+the design) and the per-model corpus observations in §11 (which
+were calibrated against the original Senteron pipeline, a
+different architecture).
+
+The data here is from three substantive deliberations run on
+2026-05-24 through the shipped v0.1.1 / v0.1.2 bundle with real
+provider keys, default panel (`gpt-4o`, `gemini-2.5-pro`,
+`deepseek-chat`), Opus-class orchestrator in Claude Desktop.
+This is small-n. The point is to register patterns that, if they
+keep recurring, should drive v0.2 decisions — not to claim
+statistical certainty from three runs.
+
+### 19.1 Run inventory
+
+**Run 1 — Physician-executive simulation design review.** Two
+rounds. Total panel cost ~$0.06. First substantive deployment
+use; produced the delegation-mechanic insight that two
+independent panelists converged on.
+
+**Run 2 — Frontier-model comparison.** Manual side-by-side with
+newer models including `gpt-5.1` thinking, not through the
+deployed bundle. Surfaced the premise-laundering risk and the
+"grounding, not IQ, is the next ceiling" framing.
+
+**Run 3 — Pre-MVP company charter (VMOSA) review.** One round.
+Total panel cost ~$0.05. Three different blind spots from three
+models; strongest single critique came from DeepSeek (cheapest
+model).
+
+### 19.2 Patterns that recurred across runs
+
+**Pattern A — GPT-4o is consistently the weakest seat for multi-round
+or design-reasoning deliberation.** All three live runs produced
+GPT-4o output that was structurally complete but substantively
+generic compared to the other two panelists. Round 2 of run #1
+produced near-boilerplate from GPT-4o while Gemini and DeepSeek
+each produced buildable design specifications. Run #3's GPT-4o
+output was the only one that missed the business-model gap that
+both Gemini and DeepSeek caught independently.
+
+This is consistent with §11's corpus-era observation that GPT
+"tends toward conventional, pleasant, mid-of-the-road answers."
+What's new in the live-run evidence: this property is more
+pronounced on multi-round deliberation and on questions that
+require holding multiple constraints at once. The corpus measured
+round-0 dispatch quality; live runs reveal a sharper degradation
+when the prompt asks for design integration across constraints.
+
+Implication: the v0.2 model-defaults re-validation (per §17.4)
+should specifically test whether `gpt-5` or `gpt-5.1` closes
+this gap, or whether the GPT family inherits the pattern from
+the underlying RLHF training. If the latter, the seat may want a
+different family entirely (e.g., Grok, Claude-as-panelist) when
+Anthropic-in-panel becomes available.
+
+**Pattern B — DeepSeek's cost-per-insight ratio is anomalously
+strong.** Across runs #1 and #3, DeepSeek produced novel findings
+neither other panelist caught (the agency/skill-gap pushback in
+run #3; the negative-outcome objective in run #3; the
+delegation-as-commitment-action design in run #1) while costing
+~$0.002 per call vs. Gemini's ~$0.03. The §11 corpus note
+("DeepSeek caught the compression-ratio error") is now
+multi-run-confirmed for live use.
+
+Implication: even when the v0.2 re-validation argues for
+upgrading the OpenAI seat to `gpt-5`, the DeepSeek seat
+probably stays. The cost asymmetry alone justifies it
+(DeepSeek is ~15× cheaper than the GPT/Gemini average); the
+divergent-perspective contribution is the second argument.
+
+**Pattern C — Independent convergence on load-bearing flaws the
+founders rationalized.** Run #1 surfaced the
+"single-player / no delegation" gap (Gemini and DeepSeek
+independent). Run #3 surfaced the "make learning fun"
+contradiction with doctrine #5 (all three panelists). In both
+cases, the convergent finding pointed at something the founder
+had partially seen and partially rationalized. Two-or-more-model
+agreement on a specific load-bearing flaw is the closest thing
+the architecture produces to a high-confidence signal.
+
+Implication: the framing prompt's "reject what is wrong, naming
+what specifically you reject and why" instruction works as
+designed when the orchestrator's prompt to the panel actively
+invites disagreement with stated premises. The instruction is
+necessary but not sufficient — see §19.4 below.
+
+**Pattern D — Three different blind spots in section-5/Q3 style
+prompts is the modal output.** Run #1 produced three distinct
+gaps (delegation, faculty deployment burden, multi-threaded
+cognitive load) from three models. Run #3 produced three
+distinct unasked questions (governance, business model,
+engagement sustainability). The orchestrator's job is to
+recognize this is the panel's normal behavior — three
+non-overlapping blind spots are not noise, they are evidence
+that the panel hasn't converged on what's missing. Treat all
+three as candidates worth investigating; don't pick one as the
+"right" gap.
+
+### 19.3 Cost magnitudes, observed
+
+Run #1 round 0: 3 KB prompt, ~4 KB total panel output, ~$0.029
+in panel cost, ~48s wall time. Run #1 round 1: similar shape,
+~$0.031 in panel cost, ~36s wall time. Run #3 round 0: large
+~7 KB prompt with rich context, ~$0.05 in panel cost, ~50s
+wall time. The "~$0.03 substantive round" magnitude in the
+README is calibrated to runs with moderate prompt size; richer
+prompts push it toward ~$0.05.
+
+Orchestrator-side Claude tokens were not directly measured (no
+mechanism — see §17.1), but each run produced 4-6 KB of
+synthesis output, which at Opus pricing implies $0.50-2 in
+Anthropic billing per run. The 10-30× orchestrator-dominates
+claim in the README is consistent with observed magnitudes.
+
+### 19.4 Premise-laundering and orchestrator-prompt design
+
+Run #2 (the frontier-model comparison) surfaced a failure mode
+worth recording: when the orchestrator's prompt asserts a claim
+in its framing, panel models accept and build on the claim
+rather than questioning it. In run #2, Gemini stated "the exam
+is administered by ABEM" as fact and built downstream
+reasoning on it — but the model got that from the prompt's
+project description, not from independent knowledge. Four
+models repeating an unverified premise from the prompt is NOT
+four-way confirmation of the premise.
+
+Run #3 demonstrated the inverse: when the orchestrator's prompt
+explicitly invited disagreement with the founders' stated
+principles ("You may disagree with the founders' stated
+principles... if you have a substantive reason. Don't
+rubber-stamp them."), the panel substantially resisted
+premise-laundering. Gemini and DeepSeek both questioned the
+core skill→joy thesis itself rather than just operating inside
+it.
+
+Implication: the project's framing prompt (in `framing.py`) is
+the *panel-side* instruction. It can ask panelists to reject
+what's wrong, but it can't change whether the orchestrator's
+prompt invites or forbids that rejection. The "reject what is
+wrong" instruction in the framing template has something to grip
+only when the orchestrator's prompt allows the panel to grip it.
+
+This isn't a code change. It's a documentation point that
+belongs in any future "how to write a good Roundtable prompt"
+guide if one materializes. The §6 framing-prompt rationale is
+updated to reference this.
+
+### 19.5 What this does NOT change
+
+- The framing prompt itself (`framing.py`). The text is
+  load-bearing per §6; live-run evidence has not contradicted
+  any of its design decisions.
+- The tool description. Live runs have not surfaced new
+  language the description should carry.
+- The default panel composition. The §11 patterns hold; the
+  re-validation work in §17.4 remains the right v0.2 task.
+- The no-persistence invariant. No live-run output has been
+  written to disk; no telemetry has been added.
+
+What it does change: the README cost magnitudes get tightened
+slightly (see the v0.1.3 release note), §6 gains a sentence
+about orchestrator-prompt design, and §11 gains an inline
+cross-reference to §19's live-run-era observations so the corpus
+and post-deployment evidence are findable from each other.
 
 ---
 
