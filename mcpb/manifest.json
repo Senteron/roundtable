@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "roundtable",
   "display_name": "Roundtable",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP tool for multi-model deliberation. Claude consults a panel of other models in parallel and refines its own answer through iterative critique.",
   "long_description": "Roundtable exposes one tool to Claude Desktop: given a prompt, dispatch it to a panel of other LLMs in parallel and return their raw answers. Claude can call the tool again with a bundle of everyone's prior answers (including its own) to get a revised round of responses. The orchestration loop lives in Claude's conversation; Roundtable is a stateless dispatcher.",
   "author": {
