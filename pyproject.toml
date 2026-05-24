@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roundtable"
+version = "0.1.0"
+description = "MCP tool for multi-model deliberation. Claude consults a panel of other models, refines its own answer through iterative critique."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Tom Yackel" }
+]
+keywords = ["mcp", "llm", "multi-model", "claude", "deliberation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    # Provider clients
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "google-genai>=0.3",
+    # MCP server
+    "mcp>=0.9",
+    # Async HTTP for any direct-call providers
+    "httpx>=0.27",
+    # Config / env loading
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/Senteron/roundtable"
+Repository = "https://github.com/Senteron/roundtable"
+Issues = "https://github.com/Senteron/roundtable/issues"
+
+[tool.setuptools.packages.find]
+include = ["roundtable*"]
+exclude = ["tests*", "docs*", "scripts*", "mcpb*", "dist*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

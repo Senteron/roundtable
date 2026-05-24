@@ -1,0 +1,63 @@
+{
+  "manifest_version": "0.2",
+  "name": "roundtable",
+  "display_name": "Roundtable",
+  "version": "0.1.0",
+  "description": "MCP tool for multi-model deliberation. Claude consults a panel of other models in parallel and refines its own answer through iterative critique.",
+  "long_description": "Roundtable exposes one tool to Claude Desktop: given a prompt, dispatch it to a panel of other LLMs in parallel and return their raw answers. Claude can call the tool again with a bundle of everyone's prior answers (including its own) to get a revised round of responses. The orchestration loop lives in Claude's conversation; Roundtable is a stateless dispatcher.",
+  "author": {
+    "name": "Tom Yackel"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Senteron/roundtable"
+  },
+  "homepage": "https://github.com/Senteron/roundtable",
+  "documentation": "https://github.com/Senteron/roundtable/blob/main/README.md",
+  "icon": null,
+  "server": {
+    "type": "python",
+    "entry_point": "roundtable/mcp_server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["-m", "roundtable.mcp_server"]
+    }
+  },
+  "tools": [
+    {
+      "name": "roundtable_round",
+      "description": "Dispatch a prompt to a panel of other LLMs in parallel and return their raw answers. For round 0, pass only the prompt. For rounds 1+, also pass the prior round's answers (including Claude's own) as the bundle. The tool does not synthesize, judge, or vote — it returns each model's response as-is. Claude orchestrates the loop and decides when to stop."
+    }
+  ],
+  "user_config": {
+    "ANTHROPIC_API_KEY": {
+      "type": "string",
+      "title": "Anthropic API Key",
+      "description": "Optional. Only needed if Claude is configured as a panel member rather than the orchestrator.",
+      "sensitive": true,
+      "required": false
+    },
+    "OPENAI_API_KEY": {
+      "type": "string",
+      "title": "OpenAI API Key",
+      "description": "Required for GPT panel members.",
+      "sensitive": true,
+      "required": true
+    },
+    "GOOGLE_API_KEY": {
+      "type": "string",
+      "title": "Google API Key",
+      "description": "Required for Gemini panel members.",
+      "sensitive": true,
+      "required": true
+    },
+    "DEEPSEEK_API_KEY": {
+      "type": "string",
+      "title": "DeepSeek API Key",
+      "description": "Required for DeepSeek panel members.",
+      "sensitive": true,
+      "required": false
+    }
+  }
+}
