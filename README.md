@@ -3,7 +3,14 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.1 in development. Not yet ready for use.
+> **⚠️ Status: v0.1 development preview — uses placeholder providers.**
+> The server is functional and the MCP contract is stable, but the
+> default panel returns `FakeProvider` echo responses, not real
+> OpenAI / Google / DeepSeek answers. **Real provider dispatch lands
+> in v0.2 (per [docs/review-concerns-plan.md](docs/review-concerns-plan.md)
+> P4).** Do not install the `.mcpb` bundle expecting working
+> multi-model dispatch yet. API key fields in the manifest are marked
+> optional and are not yet read by the code.
 
 ## What it does
 
@@ -36,7 +43,12 @@ a terminal.
 
 ## Installation
 
-Not yet. The `.mcpb` bundle for Claude Desktop install will land with v0.1.
+Not yet. The `.mcpb` bundle for Claude Desktop install lands with the
+v0.1.0 release (P5 in [docs/review-concerns-plan.md](docs/review-concerns-plan.md)).
+The first install-able bundle will still run on placeholder providers
+unless P4 (real OpenAI / Google / DeepSeek clients) has shipped by
+then; the README will be updated to drop the preview banner at that
+point.
 
 ## License
 
