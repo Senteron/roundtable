@@ -7,6 +7,22 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-24
+
+### Fixed
+
+- **`serverInfo.version` in the MCP `initialize` response now
+  reports the package version** (`__version__`) instead of the MCP
+  SDK's own version string. Observed in Claude Desktop logs after
+  the v0.3.0 install: the bundle correctly served the wider
+  registry and the new tool description, but logs showed
+  `"serverInfo":{"name":"roundtable","version":"1.27.1"}` (the SDK
+  version), which made "did the new bundle load?" impossible to
+  answer from the logs. Cosmetic-only — no change to the tool's
+  observable behavior — but worth fixing because the version
+  string is one of the few signals Claude Desktop users can check
+  without opening a tool call.
+
 ## [0.3.0] — 2026-05-24
 
 ### Added

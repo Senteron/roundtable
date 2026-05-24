@@ -36,6 +36,27 @@ async def test_server_starts_and_lists_tool() -> None:
 
 
 @pytest.mark.asyncio
+async def test_server_info_reports_package_version() -> None:
+    # The MCP `initialize` response's serverInfo.version is what
+    # Claude Desktop logs as the running bundle's version. Without
+    # passing version= to Server(), the SDK fills in its own
+    # version, which makes "did the new bundle load?" hard to tell
+    # from the logs after an upgrade.
+    from roundtable import __version__
+
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            init_result = await session.initialize()
+
+    assert init_result.serverInfo.name == "roundtable"
+    assert init_result.serverInfo.version == __version__
+
+
+@pytest.mark.asyncio
 async def test_round_zero_end_to_end() -> None:
     params = StdioServerParameters(
         command=sys.executable,

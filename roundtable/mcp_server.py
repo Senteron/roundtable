@@ -27,6 +27,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from pydantic import ValidationError
 
+from . import __version__
 from .dispatcher import dispatch
 from .providers.base import Provider
 from .providers.fake import FakeProvider
@@ -336,7 +337,11 @@ def _resolve_panel(models: list[str] | None) -> list[Provider | _UnknownModel]:
 
 
 def build_server() -> Server:
-    server: Server = Server("roundtable")
+    # Passing version= populates serverInfo.version in the MCP
+    # initialize response. Without it the SDK fills in its own
+    # version, which makes "is the new bundle loaded?" hard to
+    # answer from Claude Desktop's logs.
+    server: Server = Server("roundtable", version=__version__)
 
     @server.list_tools()
     async def _list_tools() -> list[types.Tool]:
