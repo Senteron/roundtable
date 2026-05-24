@@ -17,7 +17,7 @@ import time
 
 from openai import AsyncOpenAI
 
-from .base import ProviderResponse
+from .base import ProviderResponse, looks_like_unresolved_placeholder
 
 # DeepSeek public pricing for deepseek-chat, USD per 1M tokens
 # (commit-time estimate; non-cache prices).
@@ -47,6 +47,14 @@ class DeepSeekProvider:
         if not key:
             raise RuntimeError(
                 f"{type(self).__name__}: environment variable {_ENV_KEY} is not set"
+            )
+        if looks_like_unresolved_placeholder(key):
+            raise RuntimeError(
+                f"{type(self).__name__}: {_ENV_KEY} looks like an "
+                f"unresolved manifest placeholder ({key!r}). The "
+                f"Claude Desktop install dialog likely has an empty "
+                f"key field; paste your API key into Settings → "
+                f"Extensions → Roundtable to enable real dispatch."
             )
         self.name = model
         self.context_window_tokens = context_window_tokens

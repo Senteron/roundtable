@@ -21,7 +21,7 @@ import time
 from google import genai
 from google.genai import types as genai_types
 
-from .base import ProviderResponse
+from .base import ProviderResponse, looks_like_unresolved_placeholder
 
 # Gemini 2.5 Pro public pricing, USD per 1M tokens (commit-time
 # estimate). Gemini has tiered pricing by prompt size; we use the
@@ -50,6 +50,14 @@ class GoogleProvider:
         if not key:
             raise RuntimeError(
                 f"{type(self).__name__}: environment variable {_ENV_KEY} is not set"
+            )
+        if looks_like_unresolved_placeholder(key):
+            raise RuntimeError(
+                f"{type(self).__name__}: {_ENV_KEY} looks like an "
+                f"unresolved manifest placeholder ({key!r}). The "
+                f"Claude Desktop install dialog likely has an empty "
+                f"key field; paste your API key into Settings → "
+                f"Extensions → Roundtable to enable real dispatch."
             )
         self.name = model
         self.context_window_tokens = context_window_tokens
