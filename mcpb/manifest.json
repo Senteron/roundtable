@@ -52,28 +52,28 @@
     "ANTHROPIC_API_KEY": {
       "type": "string",
       "title": "Anthropic API Key",
-      "description": "Not yet wired; v0.1 returns placeholder responses. Will be used in v0.2 only if Claude is configured as a panel member rather than the orchestrator.",
+      "description": "Optional. Not yet used in v0.1; reserved for future Claude-as-panelist support.",
       "sensitive": true,
       "required": false
     },
     "OPENAI_API_KEY": {
       "type": "string",
       "title": "OpenAI API Key",
-      "description": "Not yet wired; v0.1 returns placeholder responses. Will be required for GPT panel members in v0.2 (P4).",
+      "description": "Optional. Enables real GPT-4o dispatch. If blank, the GPT slot in the panel falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     },
     "GOOGLE_API_KEY": {
       "type": "string",
       "title": "Google API Key",
-      "description": "Not yet wired; v0.1 returns placeholder responses. Will be required for Gemini panel members in v0.2 (P4).",
+      "description": "Optional. Enables real Gemini 2.5 Pro dispatch. If blank, the Gemini slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     },
     "DEEPSEEK_API_KEY": {
       "type": "string",
       "title": "DeepSeek API Key",
-      "description": "Not yet wired; v0.1 returns placeholder responses. Will be used for DeepSeek panel members in v0.2 (P4).",
+      "description": "Optional. Enables real DeepSeek dispatch. If blank, the DeepSeek slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     }
