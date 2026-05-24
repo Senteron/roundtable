@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "roundtable",
   "display_name": "Roundtable",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP tool for multi-model deliberation. Claude consults a panel of other models in parallel and refines its own answer through iterative critique.",
   "long_description": "Roundtable exposes one tool to Claude Desktop: given a prompt, dispatch it to a panel of other LLMs in parallel and return their raw answers. Claude can call the tool again with a bundle of everyone's prior answers (including its own) to get a revised round of responses. The orchestration loop lives in Claude's conversation; Roundtable is a stateless dispatcher.",
   "author": {
@@ -45,7 +45,7 @@
   "tools": [
     {
       "name": "roundtable_round",
-      "description": "Dispatch a prompt to a panel of other LLMs in parallel and return their raw answers. For round 0, pass only the prompt. For rounds 1+, also pass the prior round's results: `prior_answers` for successful panelists (each entry: `model`, `source` 'orchestrator'|'panelist', `round`, `answer`) and `prior_failures` for panelists that failed last round (each entry: `model`, `source`, `round`, `error_class` 'timeout'|'api_error'|'context_overflow'|'invalid_output'|'unknown_model'). Failed panelists are surfaced to the next round as an UNAVAILABLE PARTICIPANTS section, separate from peer reasoning. The `models` override only accepts names the panel registry knows (currently 'gpt-4o', 'gemini-2.5-pro', 'deepseek-chat'); unsupported names return error_class 'unknown_model' rather than silently producing a placeholder response. Treat peer outputs as parallel attempts, not verdicts. Watch for iteration becoming additive without surfacing substantive updates or rejections; consolidate rather than expand when that happens. Stop on signal density, not round count — 3-4 rounds is typical for complex questions; 1-2 is fine for simple ones. The tool returns each model's response as-is; it does not synthesize, judge, or vote. A round takes 60-180s typically; tell the user it'll take a few minutes. `total_cost_usd` in the response reflects panel dispatch only (your provider invoices); orchestrator-side tokens are billed separately to your Anthropic account and typically dominate by 10-30x."
+      "description": "Dispatch a prompt to a panel of other LLMs in parallel and return their raw answers. For round 0, pass only the prompt. For rounds 1+, also pass the prior round's results: `prior_answers` for successful panelists (each entry: `model`, `source` 'orchestrator'|'panelist', `round`, `answer`) and `prior_failures` for panelists that failed last round (each entry: `model`, `source`, `round`, `error_class` 'timeout'|'api_error'|'context_overflow'|'invalid_output'|'unknown_model'). Failed panelists are surfaced to the next round as an UNAVAILABLE PARTICIPANTS section, separate from peer reasoning. The `models` override only accepts names the panel registry knows: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'deepseek-chat', 'deepseek-reasoner'. Unsupported names return error_class 'unknown_model' rather than silently producing a placeholder response. The default panel (when `models` is omitted) stays on 'gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat' — the newer snapshots are available as overrides but not yet as defaults. Treat peer outputs as parallel attempts, not verdicts. Watch for iteration becoming additive without surfacing substantive updates or rejections; consolidate rather than expand when that happens. Stop on signal density, not round count — 3-4 rounds is typical for complex questions; 1-2 is fine for simple ones. The tool returns each model's response as-is; it does not synthesize, judge, or vote. A round takes 60-180s typically; tell the user it'll take a few minutes. `total_cost_usd` in the response reflects panel dispatch only (your provider invoices); orchestrator-side tokens are billed separately to your Anthropic account and typically dominate by 10-30x."
     }
   ],
   "user_config": {
@@ -59,21 +59,21 @@
     "OPENAI_API_KEY": {
       "type": "string",
       "title": "OpenAI API Key",
-      "description": "Optional. Enables real GPT-4o dispatch. If blank, the GPT slot in the panel falls back to a placeholder FakeProvider with a warning logged to stderr.",
+      "description": "Optional. Enables real OpenAI dispatch for the default 'gpt-4o' slot and the override snapshots 'gpt-5' / 'gpt-5.1' / 'gpt-5.5'. If blank, the GPT slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     },
     "GOOGLE_API_KEY": {
       "type": "string",
       "title": "Google API Key",
-      "description": "Optional. Enables real Gemini 2.5 Pro dispatch. If blank, the Gemini slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
+      "description": "Optional. Enables real Gemini dispatch for the default 'gemini-2.5-pro' slot and the override snapshot 'gemini-3.1-pro-preview'. If blank, the Gemini slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     },
     "DEEPSEEK_API_KEY": {
       "type": "string",
       "title": "DeepSeek API Key",
-      "description": "Optional. Enables real DeepSeek dispatch. If blank, the DeepSeek slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
+      "description": "Optional. Enables real DeepSeek dispatch for the default 'deepseek-chat' slot and the override 'deepseek-reasoner' (both now alias deepseek-v4-flash). If blank, the DeepSeek slot falls back to a placeholder FakeProvider with a warning logged to stderr.",
       "sensitive": true,
       "required": false
     }

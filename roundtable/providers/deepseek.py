@@ -23,14 +23,25 @@ from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# DeepSeek public pricing, USD per 1M tokens (non-cache tier).
+# DeepSeek public pricing, USD per 1M tokens (cache-miss tier).
 # https://api-docs.deepseek.com/quick_start/pricing
+# Both `deepseek-chat` (non-thinking) and `deepseek-reasoner`
+# (thinking) now alias `deepseek-v4-flash` and share identical
+# pricing and 1M context, per the May 2026 consolidation. The
+# legacy names are scheduled for sunset 2026-07-24.
 _PRICING: dict[str, tuple[float, float]] = {
-    "deepseek-chat": (0.27, 1.10),
+    "deepseek-chat": (0.14, 0.28),
+    "deepseek-reasoner": (0.14, 0.28),
+}
+
+# Per-model max input/context window in tokens.
+_CONTEXT_WINDOWS: dict[str, int] = {
+    "deepseek-chat": 1_000_000,
+    "deepseek-reasoner": 1_000_000,
 }
 
 DEFAULT_MODEL = "deepseek-chat"
-CONTEXT_WINDOW_TOKENS = 64_000
+CONTEXT_WINDOW_TOKENS = _CONTEXT_WINDOWS[DEFAULT_MODEL]
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 _ENV_KEY = "DEEPSEEK_API_KEY"

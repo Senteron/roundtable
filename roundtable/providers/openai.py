@@ -25,13 +25,27 @@ from openai import AsyncOpenAI
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
 # OpenAI public pricing, USD per 1M tokens (as of 2026-05).
-# https://openai.com/api/pricing/
+# https://developers.openai.com/api/docs/pricing
+# Note for gpt-5.5: inputs exceeding 272K tokens cost 2x input /
+# 1.5x output for the session; we use the base rate here.
 _PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o": (2.50, 10.00),
+    "gpt-5": (1.25, 10.00),
+    "gpt-5.1": (1.25, 10.00),
+    "gpt-5.5": (5.00, 30.00),
+}
+
+# Per-model context windows (max input tokens). Source: each model's
+# page under https://developers.openai.com/api/docs/models/
+_CONTEXT_WINDOWS: dict[str, int] = {
+    "gpt-4o": 128_000,
+    "gpt-5": 400_000,
+    "gpt-5.1": 400_000,
+    "gpt-5.5": 1_050_000,
 }
 
 DEFAULT_MODEL = "gpt-4o"
-CONTEXT_WINDOW_TOKENS = 128_000
+CONTEXT_WINDOW_TOKENS = _CONTEXT_WINDOWS[DEFAULT_MODEL]
 
 _ENV_KEY = "OPENAI_API_KEY"
 

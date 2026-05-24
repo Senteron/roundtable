@@ -124,3 +124,18 @@ def test_cost_is_none_for_unknown_model() -> None:
 def test_cost_is_known_for_listed_model() -> None:
     assert _estimate_cost_usd("gpt-4o", 1_000_000, 0) == pytest.approx(2.50)
     assert _estimate_cost_usd("gpt-4o", 0, 1_000_000) == pytest.approx(10.00)
+
+
+@pytest.mark.parametrize(
+    "model,expected_input,expected_output",
+    [
+        ("gpt-5", 1.25, 10.00),
+        ("gpt-5.1", 1.25, 10.00),
+        ("gpt-5.5", 5.00, 30.00),
+    ],
+)
+def test_new_models_have_documented_prices(
+    model: str, expected_input: float, expected_output: float
+) -> None:
+    assert _estimate_cost_usd(model, 1_000_000, 0) == pytest.approx(expected_input)
+    assert _estimate_cost_usd(model, 0, 1_000_000) == pytest.approx(expected_output)

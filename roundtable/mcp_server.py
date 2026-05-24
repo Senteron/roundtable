@@ -58,10 +58,13 @@ TOOL_DESCRIPTION = (
     "'unknown_model'). Failed panelists are surfaced to the next "
     "round as an UNAVAILABLE PARTICIPANTS section, separate from "
     "peer reasoning. The `models` override only accepts names the "
-    "panel registry knows (currently 'gpt-4o', 'gemini-2.5-pro', "
-    "'deepseek-chat'); unsupported names return error_class "
+    "panel registry knows: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', "
+    "'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'deepseek-chat', "
+    "'deepseek-reasoner'. Unsupported names return error_class "
     "'unknown_model' rather than silently producing a placeholder "
-    "response. "
+    "response. The default panel (when `models` is omitted) stays "
+    "on 'gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat' — the newer "
+    "snapshots are available as overrides but not yet as defaults. "
     "Treat peer outputs as parallel attempts, not verdicts. Watch "
     "for iteration becoming additive without surfacing substantive "
     "updates or rejections; consolidate rather than expand when "
@@ -147,11 +150,14 @@ INPUT_SCHEMA: dict[str, Any] = {
             "type": ["array", "null"],
             "description": (
                 "Optional panel override. If omitted, the default "
-                "panel (resolved from configured API keys) is used. "
-                "Only names in the panel registry resolve to a real "
-                "provider: 'gpt-4o', 'gemini-2.5-pro', "
-                "'deepseek-chat'. Any other name returns "
-                "error_class 'unknown_model' for that slot."
+                "panel (resolved from configured API keys) is used: "
+                "'gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat'. "
+                "Names in the panel registry that resolve to a real "
+                "provider: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', "
+                "'gemini-2.5-pro', 'gemini-3.1-pro-preview', "
+                "'deepseek-chat', 'deepseek-reasoner'. Any other "
+                "name returns error_class 'unknown_model' for that "
+                "slot."
             ),
             "items": {"type": "string"},
         },
@@ -177,12 +183,20 @@ INPUT_SCHEMA: dict[str, Any] = {
 # a real SDK rather than FakeProvider.
 _REAL_PROVIDER_MODELS: dict[str, str] = {
     "gpt-4o": "OPENAI_API_KEY",
+    "gpt-5": "OPENAI_API_KEY",
+    "gpt-5.1": "OPENAI_API_KEY",
+    "gpt-5.5": "OPENAI_API_KEY",
     "gemini-2.5-pro": "GOOGLE_API_KEY",
+    "gemini-3.1-pro-preview": "GOOGLE_API_KEY",
     "deepseek-chat": "DEEPSEEK_API_KEY",
+    "deepseek-reasoner": "DEEPSEEK_API_KEY",
 }
 
 # Default panel composition when the caller passes models=None.
-# Mirrors docs/decisions.md §8.
+# Mirrors docs/decisions.md §8. Defaults intentionally stay on the
+# v0.1 lineup so the framing-prompt empirical validation
+# (docs/decisions.md §17.4) doesn't need to be re-run; override-only
+# widening for the newer snapshots.
 _DEFAULT_PANEL_MODELS: list[str] = [
     "gpt-4o",
     "gemini-2.5-pro",
@@ -197,18 +211,27 @@ def _make_real_provider(model: str) -> Provider:
     raises if missing. The caller is responsible for verifying the
     key is present before calling this.
     """
-    if model == "gpt-4o":
-        from .providers.openai import OpenAIProvider
+    if model in ("gpt-4o", "gpt-5", "gpt-5.1", "gpt-5.5"):
+        from .providers.openai import OpenAIProvider, _CONTEXT_WINDOWS
 
-        return OpenAIProvider(model=model)
-    if model == "gemini-2.5-pro":
-        from .providers.google import GoogleProvider
+        return OpenAIProvider(
+            model=model,
+            context_window_tokens=_CONTEXT_WINDOWS[model],
+        )
+    if model in ("gemini-2.5-pro", "gemini-3.1-pro-preview"):
+        from .providers.google import GoogleProvider, _CONTEXT_WINDOWS
 
-        return GoogleProvider(model=model)
-    if model == "deepseek-chat":
-        from .providers.deepseek import DeepSeekProvider
+        return GoogleProvider(
+            model=model,
+            context_window_tokens=_CONTEXT_WINDOWS[model],
+        )
+    if model in ("deepseek-chat", "deepseek-reasoner"):
+        from .providers.deepseek import DeepSeekProvider, _CONTEXT_WINDOWS
 
-        return DeepSeekProvider(model=model)
+        return DeepSeekProvider(
+            model=model,
+            context_window_tokens=_CONTEXT_WINDOWS[model],
+        )
     raise ValueError(f"no real provider registered for model {model!r}")
 
 

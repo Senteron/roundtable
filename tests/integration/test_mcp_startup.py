@@ -287,7 +287,7 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
     routing to FakeProvider and emitting a prompt-echo response.
 
     Regression coverage for v0.2: pre-0.2 servers would treat
-    `gpt-5.5` etc. as valid fixture names and return prompt echoes
+    `gpt-9` etc. as valid fixture names and return prompt echoes
     that an orchestrator could not distinguish from real answers.
     """
     params = StdioServerParameters(
@@ -301,7 +301,7 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
                 "roundtable_round",
                 {
                     "prompt": "What is 2+2?",
-                    "models": ["fake-a", "gpt-5.5", "gemini-3-pro"],
+                    "models": ["fake-a", "gpt-9", "gemini-99-ultra"],
                 },
             )
 
@@ -311,8 +311,8 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
     by_name = {r["model"]: r for r in payload["responses"]}
     assert [r["model"] for r in payload["responses"]] == [
         "fake-a",
-        "gpt-5.5",
-        "gemini-3-pro",
+        "gpt-9",
+        "gemini-99-ultra",
     ], "merged response must preserve caller-supplied model order"
 
     # The legitimate FakeProvider fixture still works.
@@ -320,7 +320,7 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
     assert by_name["fake-a"]["answer"] is not None
 
     # The two unknown models surface as error stubs.
-    for name in ("gpt-5.5", "gemini-3-pro"):
+    for name in ("gpt-9", "gemini-99-ultra"):
         assert by_name[name]["error"] == "unknown_model"
         assert by_name[name]["answer"] is None
         assert by_name[name]["estimated_cost_usd"] is None
@@ -328,6 +328,6 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
 
     error_names = {e["model"]: e["error"] for e in payload["errors"]}
     assert error_names == {
-        "gpt-5.5": "unknown_model",
-        "gemini-3-pro": "unknown_model",
+        "gpt-9": "unknown_model",
+        "gemini-99-ultra": "unknown_model",
     }
