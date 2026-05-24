@@ -8,6 +8,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+
 - Initial project scaffolding: repo structure, license, README, manifest,
   package metadata, contributor guidance.
 - Pre-implementation decision record: [docs/review-concerns-plan.md](docs/review-concerns-plan.md)
@@ -26,7 +27,36 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   User-visible behavior change — previously such bundles would have
   been accepted and produced a confused framing prompt; now they
   return a structured `invalid_input` payload at the MCP boundary.
-- 61 unit + integration tests, no network, ~5s.
+- P5 packaging: `mcpb/build.sh` (auto-injects `TOOL_DESCRIPTION`
+  from Python source into the manifest), `mcpb/pyproject.toml` for
+  bundle runtime deps, `scripts/check_mcpb_freshness.sh` for the
+  rebuild-discipline check. First installable bundle at
+  `dist/roundtable-0.1.0.mcpb` (+ `.sha256` sidecar).
+- P5 manifest format: `manifest_version` bumped from `0.2` to `0.3`,
+  launcher switched to `uv run --directory ${__dirname} -m
+  roundtable`, `${user_config.*}` substitution wired so configured
+  API keys reach the server process (the keys still aren't read by
+  v0.1 code — see P4), and a `compatibility` block declaring
+  Claude Desktop >=0.10.0, Python >=3.11 <4, all major platforms.
+  These format changes would normally trigger a minor version bump,
+  but the bundle was never previously installable so there's no
+  prior version to bump from.
+- P5 CI: `.github/workflows/tests.yml` (lint + unit + integration on
+  every push and PR) and `mcpb-up-to-date.yml` (bundle freshness
+  diff + sidecar checksum verification, scoped to bundle-relevant
+  paths so unrelated PRs don't pay the install-node tax).
+- P5 sync tests: `test_version_sync.py` (pyproject ↔ manifest ↔
+  `__version__`) and `test_tool_description_sync.py` (Python
+  TOOL_DESCRIPTION ↔ manifest tools[0].description). The build
+  script's auto-injection makes the second test mostly redundant
+  for fresh builds, but it catches drift in the committed manifest
+  before push.
+- P5 manifest-launch integration test: launches the server via the
+  manifest's actual `command` + `args` (with `${__dirname}` resolved
+  to the repo root), not via `sys.executable -m roundtable`. This
+  catches the class of defect that the existing `test_mcp_startup.py`
+  bypasses by design.
+- 66 unit + integration tests, no network, ~5s.
 
 ### Known limitations (v0.1 preview)
 
@@ -46,6 +76,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.1.0] — TBD
 
 Initial release. Will include:
+
 - One MCP tool, `roundtable_round`, for parallel dispatch to a panel of
   external models.
 - Standardized round-1+ framing prompt embedding the cognitive task

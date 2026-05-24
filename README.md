@@ -43,12 +43,24 @@ a terminal.
 
 ## Installation
 
-Not yet. The `.mcpb` bundle for Claude Desktop install lands with the
-v0.1.0 release (P5 in [docs/review-concerns-plan.md](docs/review-concerns-plan.md)).
-The first install-able bundle will still run on placeholder providers
-unless P4 (real OpenAI / Google / DeepSeek clients) has shipped by
-then; the README will be updated to drop the preview banner at that
-point.
+The first installable `.mcpb` bundle is committed to
+[dist/](dist/) as of v0.1.0. To install in Claude Desktop:
+
+1. Download `dist/roundtable-0.1.0.mcpb` from this repo.
+2. Verify the checksum against `dist/roundtable-0.1.0.mcpb.sha256`
+   (`shasum -a 256 -c roundtable-0.1.0.mcpb.sha256`).
+3. Open Claude Desktop → Settings → Extensions → Install from file →
+   select the `.mcpb`.
+
+The bundle launches the MCP server via `uv run`; Claude Desktop's
+extension runtime provisions the dependencies from
+[mcpb/pyproject.toml](mcpb/pyproject.toml) automatically.
+
+**This v0.1 bundle still uses placeholder providers per the banner
+above.** Configuring API keys in the Claude Desktop install dialog
+is supported (the fields are present and optional) but the keys are
+not yet read by the code; the panel returns echo responses. Real
+multi-model dispatch lands in v0.2 (P4).
 
 ## License
 
