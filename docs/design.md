@@ -232,9 +232,10 @@ Notes:
   `"api_error"`, `"context_overflow"`, `"invalid_output"`).
 - Failed responses are not rendered as `PANEL ANSWERS` entries; this
   prevents an error stub from being treated as peer reasoning.
-- No `CONVERGED:` / `NEEDS_ANOTHER_ROUND:` sentinel. Empirically those
-  produced 99.3% performative stops in 67 real runs of Senteron's
-  existing pipeline.
+- No `CONVERGED:` / `NEEDS_ANOTHER_ROUND:` sentinel. Empirically
+  those produced 99.3% performative stops across 72 real runs of
+  Senteron's existing pipeline; see
+  [empirical-evidence.md §2](./empirical-evidence.md) for the receipts.
 - "Defend your distinctive choices when the others would smooth them
   away" is the explicit anti-regression instruction. The voicemail
   test showed Opus could do this with the right framing.
@@ -674,10 +675,12 @@ Things known to be unresolved, not blocking v0.1:
 The design choices in this document are not arbitrary. They derive
 from:
 
-- **The 67-real-run Senteron corpus** that showed the existing
-  pipeline's convergence-vote field was 99.3% stop with 32% exact-phrase
-  boilerplate. This is the evidence behind §3's rejection of vote
-  sentinels.
+- **The Senteron corpus** (67 historical + 5 fresh = 72 runs, 146
+  votes) that showed the existing pipeline's convergence-vote field
+  was 99.3% stop with 32% exact-phrase boilerplate. This is the
+  evidence behind §3's rejection of vote sentinels, §4.3's N-1
+  tolerance (10% per-call error rate), and §4.2's timeout defaults
+  (dispatch p90 = 182s).
 - **The voicemail flash-fiction test** that showed Opus 4.7 can hold a
   distinctive creative thesis across two rounds of pasted peer
   critiques when the framing positions them as parallel attempts
@@ -691,8 +694,9 @@ from:
   This is the evidence behind §4's no-hard-cap stance and the §2.1
   tool-description additions about consolidation.
 
-The two live tests are the strongest evidence; they are documented in
-the conversation transcripts that produced this project but are not
-checked into the repo. If we ever want to reproduce or extend the
-evidence, the test prompts and the Opus transcripts are recoverable;
-the design rationale that emerged is captured here.
+Full receipts for the corpus findings — run IDs, verbatim boilerplate
+citations, per-model vote/cost/latency tables — are in
+[empirical-evidence.md](./empirical-evidence.md). The two live tests
+are documented in the conversation transcripts that produced this
+project; their rationale is captured in [decisions.md §5, §13.2,
+§13.3](./decisions.md).
