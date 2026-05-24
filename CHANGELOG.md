@@ -9,6 +9,76 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 (none yet)
 
+## [0.1.1] — 2026-05-24
+
+Bugfix release responding to a real-world failure mode caught
+minutes after v0.1.0 shipped: a Claude Desktop install with empty
+API-key fields passed the unresolved literal placeholder strings
+(e.g. `${user_config.OPENAI_API_KEY}`) into the provider SDKs as if
+they were real keys. The SDKs constructed successfully, made real
+HTTP calls, and got 401 Unauthorized back from every provider. The
+panel returned three `api_error` stubs with no diagnostic detail,
+so the orchestrator had no way to tell whether keys were stale,
+missing, network was down, or providers were rate-limiting.
+
+### Added
+
+- **`error_detail` field on `ModelResponse`.** Short (≤200 char)
+  diagnostic alongside the error class. Drawn from the exception's
+  `str()` for a curated allowlist of exception classes whose
+  message bodies are known not to echo input
+  (`AuthenticationError`, `PermissionDeniedError`, `RateLimitError`,
+  `InternalServerError`, `ServiceUnavailableError`,
+  `APIConnectionError`, `APITimeoutError`, `ConnectionError`,
+  `TimeoutError`, `RuntimeError`, `ValueError`); or from
+  dispatcher-generated descriptions for internal failure modes
+  (`timeout after Ns`, `framed prompt exceeds N token context
+  window`). For exception classes NOT on the allowlist —
+  notably `BadRequestError`, which some SDKs use for input-policy
+  rejections and can include the triggering prompt fragment —
+  `error_detail` carries only the class name, not the message
+  body. This keeps the privacy claim ("error_detail never echoes
+  prompt or answer content") policy-enforced rather than
+  hope-based. Null on success. Schema-additive, backward
+  compatible for callers that ignore the new field. Pydantic
+  validator silently truncates to 200 chars rather than raising —
+  a buggy callsite can't kill an entire round just because the
+  message was too long.
+- **`looks_like_unresolved_placeholder()` helper in
+  `providers/base.py`** that detects values starting with `${` or
+  `$user_config`. All three real providers
+  (`OpenAIProvider`, `GoogleProvider`, `DeepSeekProvider`) call
+  this in `__init__` and raise `RuntimeError` with a message
+  pointing the user at the Claude Desktop install dialog. The
+  existing `_resolve_panel()` fallback then routes the slot to
+  FakeProvider with a warning instead of letting the placeholder
+  reach the SDK.
+- **README note explaining the `.env` non-feature.** Roundtable
+  v0.1 does NOT read API keys from a `.env` file; only the Claude
+  Desktop install dialog populates the server's environment. A
+  Senteron-style `.env` directory picker is on the v0.2 roadmap.
+
+### Changed
+
+- **18 new tests:** 11 in `test_placeholder_keys.py` covering the
+  detector, per-provider construction rejection, and
+  `_resolve_panel()` fallback; 7 in `test_error_detail.py`
+  covering success vs each error class, truncation to the 200-char
+  cap, and newline flattening. Total suite: 110 unit +
+  integration, ~9s, no network.
+- **First bundle rebuild post-release.** `dist/roundtable-0.1.0.mcpb`
+  removed from the working tree (still available on the v0.1.0
+  GitHub release page); `dist/roundtable-0.1.1.mcpb` added.
+
+### Did not change
+
+- No framing-prompt edits, no tool-description edits, no schema
+  field removals or renames. v0.1.1 is purely additive on the
+  contract surface — orchestrators written against v0.1.0 keep
+  working unchanged, and the new `error_detail` field is
+  opt-in for the orchestrator to read.
+- No version bump to `manifest_version`; still `0.3`.
+
 ## [0.1.0] — 2026-05-24
 
 Initial release. Roundtable v0.1 is an MCP tool that dispatches a

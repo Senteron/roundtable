@@ -52,3 +52,29 @@ class InvalidProviderOutput(Exception):
     "the provider was reachable but its answer was unusable" from
     "the provider call itself failed."
     """
+
+
+def looks_like_unresolved_placeholder(value: str) -> bool:
+    """Return True if `value` looks like a manifest substitution
+    template that was not actually substituted at install time.
+
+    Claude Desktop's manifest format uses `${user_config.FOO}` to
+    inject install-dialog values into the server's environment. If
+    the user leaves a key field blank, the substitution may produce
+    either an empty string OR the literal placeholder text depending
+    on the host. An empty string is caught by the existing
+    truthy-check; the literal placeholder is NOT (it's a non-empty
+    string) and was silently passed to provider SDKs as if it were a
+    real API key — producing 401 Unauthorized at the upstream API
+    and an indistinguishable api_error stub at the MCP boundary.
+
+    This helper centralizes the detection so all three providers
+    classify the case uniformly. Format examples this matches:
+        - "${user_config.OPENAI_API_KEY}"
+        - "${OPENAI_API_KEY}"
+        - "$OPENAI_API_KEY"
+    """
+    if not value:
+        return False
+    stripped = value.strip()
+    return stripped.startswith("${") or stripped.startswith("$user_config")

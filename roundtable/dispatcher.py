@@ -38,6 +38,42 @@ from .schemas import (
 _CHARS_PER_TOKEN = 3.5
 _RESPONSE_RESERVE_TOKENS = 4_000
 
+# Exception class names whose str() is known to NOT include the
+# request body / prompt content. For these, error_detail carries the
+# full message (truncated). For everything else, error_detail carries
+# only the exception class name, no message — to honor the
+# no-prompt-content-on-error privacy claim even when the underlying
+# SDK chooses to include input fragments in its exception text.
+#
+# Tightening this allowlist requires testing the relevant SDK's
+# exception class against representative failures; loosening (adding
+# a class) requires confirming the SDK does NOT echo input. When in
+# doubt, leave it off — the orchestrator still sees the class name.
+_PROVIDER_EXCEPTION_NAMES_SAFE_TO_QUOTE: frozenset[str] = frozenset(
+    {
+        # Authentication / authorization. SDKs mask the key in the
+        # message; remaining text is "401 Unauthorized" or similar.
+        "AuthenticationError",
+        "PermissionDeniedError",
+        # Rate limiting. Message is "429 Too Many Requests" + headers.
+        "RateLimitError",
+        # Server-side problems. Message is "500 Internal Server Error"
+        # or similar, no input echo.
+        "InternalServerError",
+        "ServiceUnavailableError",
+        # Network / transport. Message is the underlying httpx/socket
+        # error; no input body.
+        "APIConnectionError",
+        "APITimeoutError",
+        "ConnectionError",
+        "TimeoutError",
+        # Roundtable-internal errors. Authored here; messages are
+        # ours and contain no provider input.
+        "RuntimeError",
+        "ValueError",
+    }
+)
+
 
 def _build_prompt(
     user_prompt: str,
@@ -72,14 +108,27 @@ async def _call_one(
     provider: Provider,
     prompt: str,
     timeout_seconds: float,
-) -> tuple[ProviderResponse | None, ErrorClass | None, float]:
+) -> tuple[ProviderResponse | None, ErrorClass | None, str | None, float]:
     """Single-provider call with timeout + error classification.
 
-    Returns (response, error_class, elapsed_seconds). Exactly one of
-    response/error_class is non-None.
+    Returns (response, error_class, error_detail, elapsed_seconds).
+    On success: (response, None, None, elapsed).
+    On failure: (None, error_class, short_diagnostic_message, elapsed).
+
+    `error_detail` is a short (<=200 char) diagnostic string drawn
+    from the exception's str(); it never carries prompt or answer
+    content. The dispatcher passes it through to ModelResponse so
+    orchestrators can distinguish "401 Unauthorized" from "timeout"
+    from "context window exceeded" without parsing prose.
     """
     if _exceeds_context_window(prompt, provider):
-        return None, ErrorClass.CONTEXT_OVERFLOW, 0.0
+        return (
+            None,
+            ErrorClass.CONTEXT_OVERFLOW,
+            f"framed prompt exceeds {provider.context_window_tokens} "
+            f"token context window",
+            0.0,
+        )
 
     start = time.monotonic()
     try:
@@ -87,13 +136,58 @@ async def _call_one(
             provider.call(prompt, timeout_seconds),
             timeout=timeout_seconds,
         )
-        return response, None, time.monotonic() - start
+        return response, None, None, time.monotonic() - start
     except asyncio.TimeoutError:
-        return None, ErrorClass.TIMEOUT, time.monotonic() - start
-    except InvalidProviderOutput:
-        return None, ErrorClass.INVALID_OUTPUT, time.monotonic() - start
-    except Exception:
-        return None, ErrorClass.API_ERROR, time.monotonic() - start
+        return (
+            None,
+            ErrorClass.TIMEOUT,
+            f"timeout after {timeout_seconds:.1f}s",
+            time.monotonic() - start,
+        )
+    except InvalidProviderOutput as e:
+        return (
+            None,
+            ErrorClass.INVALID_OUTPUT,
+            _truncate_detail(str(e)),
+            time.monotonic() - start,
+        )
+    except Exception as e:
+        return (
+            None,
+            ErrorClass.API_ERROR,
+            _classify_exception_detail(e),
+            time.monotonic() - start,
+        )
+
+
+def _classify_exception_detail(e: Exception) -> str:
+    """Build a short diagnostic string from an exception while
+    honoring the no-prompt-content-on-error privacy claim.
+
+    Provider SDKs (notably OpenAI on BadRequestError and Google on
+    400 responses) sometimes include the triggering input fragment
+    in their exception message. To prevent that from leaking into
+    error_detail, we quote the exception's str() ONLY for exception
+    classes on the safe allowlist; everything else returns the class
+    name alone.
+
+    The orchestrator still gets actionable information ("BadRequestError",
+    "InvalidRequestError") for unknown failure modes; it just doesn't
+    get the message body that might echo the prompt.
+    """
+    name = type(e).__name__
+    if name in _PROVIDER_EXCEPTION_NAMES_SAFE_TO_QUOTE:
+        return _truncate_detail(f"{name}: {e}")
+    return _truncate_detail(name)
+
+
+def _truncate_detail(s: str) -> str:
+    """Trim diagnostic text to fit ModelResponse.error_detail's
+    200-char cap. Strips newlines so multi-line tracebacks don't
+    blow up JSON serialization or clutter the orchestrator's view.
+    """
+    flat = " ".join(s.split())
+    return flat[:200]
 
 
 async def dispatch(
@@ -128,7 +222,9 @@ async def dispatch(
     errors: list[ModelError] = []
     total_cost = 0.0
 
-    for provider, (response, error_class, elapsed) in zip(providers, results):
+    for provider, (response, error_class, error_detail, elapsed) in zip(
+        providers, results
+    ):
         if response is not None:
             cost = response.estimated_cost_usd or 0.0
             total_cost += cost
@@ -150,6 +246,7 @@ async def dispatch(
                     elapsed_seconds=elapsed,
                     estimated_cost_usd=None,
                     error=error_class,
+                    error_detail=error_detail,
                 )
             )
             errors.append(ModelError(model=provider.name, error=error_class))

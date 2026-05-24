@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Source(str, Enum):
@@ -107,6 +107,21 @@ class ModelResponse(BaseModel):
     elapsed_seconds: float = Field(ge=0)
     estimated_cost_usd: float | None = None
     error: ErrorClass | None = None
+    # Short diagnostic string when error is set — e.g., "401
+    # Unauthorized" or "context window exceeded". Capped at 200
+    # chars by the validator below (silently truncated rather than
+    # rejected, so a buggy callsite can't kill an entire round just
+    # because the message was too long). Never carries prompt or
+    # answer content beyond the exception-allowlist policy in
+    # dispatcher._classify_exception_detail. Null on success.
+    error_detail: str | None = None
+
+    @field_validator("error_detail")
+    @classmethod
+    def _truncate_error_detail(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v[:200]
 
 
 class ModelError(BaseModel):

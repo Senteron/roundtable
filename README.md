@@ -60,6 +60,24 @@ continues to run, which keeps the install dialog optional and lets
 you bring up the bundle with whichever subset of providers you have
 keys for.
 
+> **Note on `.env` files:** Unlike its sibling [Senteron](https://github.com/Senteron/senteron),
+> Roundtable v0.1 does **not** read API keys from a `.env` file in
+> your home directory or in a configured directory picker. The
+> bundle launches with a sanitized environment supplied by Claude
+> Desktop; only values you type into the Roundtable install dialog
+> reach the server. Putting your keys in a project `.env` (even a
+> Roundtable repo `.env`) will not work — the server never sees
+> them. A `.env` file picker like Senteron's is on the v0.2
+> roadmap.
+
+If real dispatch fails with an obviously-wrong error message like
+`api_error: AuthenticationError` or `OPENAI_API_KEY looks like an
+unresolved manifest placeholder`, the most common cause is an empty
+or stale field in the Claude Desktop install dialog. v0.1.1 detects
+unresolved `${user_config.*}` literals at provider-construction
+time and falls back to FakeProvider with a clear warning rather
+than silently passing the placeholder through to the SDK.
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
