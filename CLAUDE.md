@@ -297,6 +297,100 @@ immediately while the implementing agent's tests had passed. A
 parallel review at phase boundaries is cheap insurance against
 exactly that failure mode.
 
+### Privacy review before anything reaches GitHub
+
+**Rule.** Before any action that puts content onto github.com — `git
+push` to any branch, `gh pr create`, `gh pr edit`, `gh pr comment`,
+`gh release upload`, or any equivalent — the implementing agent MUST
+run a privacy review of:
+
+1. Every file changed in commits that aren't yet on origin (`git diff
+   origin/<branch>...HEAD` when the branch exists remotely, or `git
+   diff main...HEAD` for a new branch).
+2. Every file referenced or excerpted in the PR/release/comment body
+   itself.
+3. Any untracked files about to be added (`git status -s` filtered to
+   `??` lines).
+
+The review checks for:
+
+- **Absolute filesystem paths** containing the user's home directory
+  (`/Users/<name>/`, `/home/<name>/`, `C:\Users\<name>\`). Redact to
+  `~/.../` or remove.
+- **Names, emails, phone numbers** that aren't already public (the
+  git author trailer is fine; *content* references are not).
+- **Personal prompt or answer content** from the user's own
+  workflows, especially anything that hints at career, healthcare,
+  finances, family, employer, or relationships. The Senteron corpus
+  data and any prompt excerpts from it fall under this rule by
+  default.
+- **Secrets**: API keys, tokens, bearer values, private URLs, OAuth
+  redirect URIs, signed-URL tokens, model-provider account IDs.
+  Even partial fragments — assume rotation is required if any
+  fragment leaks.
+- **Customer or third-party identifying data**: real user IDs, real
+  email addresses in test fixtures, real org names, real document
+  IDs from internal systems.
+- **Off-repo absolute paths** that reveal the user's machine layout
+  even when no personal content sits at them (e.g.,
+  `/Users/<name>/Documents/<private-project>/`). Redact.
+- **Verbatim quotes from model responses** that mention specific
+  domain context. The aggregate analysis is fine; the verbatim text
+  may carry personal context. Truncate to a non-revealing fragment
+  if the structural finding can survive truncation.
+
+**What does NOT require this review:** content that's already on
+github.com via an earlier merged PR (it's already public), the
+existing committed CLAUDE.md/README.md/LICENSE, and standard
+open-source boilerplate.
+
+**How to run the review.** Three steps, in order:
+
+1. **List the surfaces.** `git status -s`, `git diff --stat
+   origin/<branch>...HEAD` (or `main...HEAD`), and the body text of
+   any PR/release/comment you're about to post.
+2. **Scan with grep first.** Run targeted regex sweeps against the
+   changed files for the categories above. Suggested starters
+   (extend as the project evolves):
+
+   ```bash
+   grep -nE '/Users/[^/]+/|/home/[^/]+/|C:\\Users\\' <files>
+   grep -niE 'tom@|yackel|tom\.|@anthropic\.com' <files>
+   grep -niE 'sk-[a-z0-9]{20,}|Bearer [a-zA-Z0-9._-]{20,}' <files>
+   grep -niE 'career|health|physician|client|customer|employer' <files>
+   ```
+
+   Treat grep hits as candidates, not verdicts; check context.
+3. **Read with eyes on.** Grep can't catch paraphrased personal
+   context or non-obvious identifying details. For any new or
+   substantially-changed doc, scan the prose at a glance — not
+   line-by-line, but enough to notice "wait, that example is
+   from my actual work."
+
+**Findings handling.** Any positive finding must be resolved before
+the action proceeds. Options: redact the content, move the file to
+a gitignored location, drop the commit, or rewrite the PR body. Do
+NOT push first and "clean it up later" — push history is
+public-record from the moment it hits github.com, and force-push
+rewrites are visible in the API. If the finding is in already-merged
+content, that's a separate incident requiring rotation and a public
+acknowledgment, not a routine fix.
+
+**Scope note.** This rule fires on *every* push, not just PRs to
+`main`. A feature branch on github.com is just as public as `main`
+once pushed. The "before final commit" gate of the independent-review
+rule and the "before any GitHub-bound action" gate of this rule are
+different moments; both apply to a typical PR flow.
+
+This rule exists because the `docs/empirical-evidence.md` doc, when
+first surfaced for review, contained absolute paths to a private
+project directory, prompt-content fragments revealing the author's
+career-planning context, and a "physician executive" prompt label
+that hinted at personal professional context. None of these were
+load-bearing for the doc's analytic value; all were caught and
+redacted in a fixup commit before the PR merged. A standing rule
+catches the next instance before it gets that far.
+
 ### Definition of done
 
 Before saying "done":
@@ -312,6 +406,9 @@ Before saying "done":
 - [ ] If this is a major change per **Independent pre-commit review**
       above: review launched, findings addressed or deferred with
       rationale, before the final commit.
+- [ ] **Privacy review** run before `git push`, `gh pr create`, or any
+      other action that puts content on github.com. See
+      **Privacy review before anything reaches GitHub** above.
 - [ ] `git diff` reviewed for: secrets, `.env*` content, debug prints,
       scratch files, accidental formatting on unrelated files.
 - [ ] No skipped tests without an explanation, no `# type: ignore`
