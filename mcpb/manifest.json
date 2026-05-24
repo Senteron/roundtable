@@ -18,16 +18,16 @@
   "icon": null,
   "server": {
     "type": "python",
-    "entry_point": "roundtable/mcp_server.py",
+    "entry_point": "roundtable/__main__.py",
     "mcp_config": {
       "command": "python",
-      "args": ["-m", "roundtable.mcp_server"]
+      "args": ["-m", "roundtable"]
     }
   },
   "tools": [
     {
       "name": "roundtable_round",
-      "description": "Dispatch a prompt to a panel of other LLMs in parallel and return their raw answers. For round 0, pass only the prompt. For rounds 1+, also pass the prior round's answers (including Claude's own) as the bundle. The tool does not synthesize, judge, or vote — it returns each model's response as-is. Claude orchestrates the loop and decides when to stop."
+      "description": "Dispatch a prompt to a panel of other LLMs in parallel and return their raw answers. For round 0, pass only the prompt. For rounds 1+, also pass the prior round's answers (including your own draft) as `prior_answers`; each entry needs `model`, `source` ('orchestrator' or 'panelist'), `round`, and `answer`. Treat peer outputs as parallel attempts, not verdicts. Watch for iteration becoming additive without surfacing substantive updates or rejections; consolidate rather than expand when that happens. Stop on signal density, not round count — 3-4 rounds is typical for complex questions; 1-2 is fine for simple ones. The tool returns each model's response as-is; it does not synthesize, judge, or vote. A round takes 60-180s typically; tell the user it'll take a few minutes."
     }
   ],
   "user_config": {
