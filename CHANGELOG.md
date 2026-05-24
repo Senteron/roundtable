@@ -56,22 +56,37 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to the repo root), not via `sys.executable -m roundtable`. This
   catches the class of defect that the existing `test_mcp_startup.py`
   bypasses by design.
-- 66 unit + integration tests, no network, ~5s.
-
-### Known limitations (v0.1 preview)
-
-- **Default panel returns placeholder echoes, not real model responses.**
-  `_resolve_panel()` returns `FakeProvider` instances; real OpenAI,
-  Google, and DeepSeek clients land in v0.2 (P4 per the plan). The
-  manifest's API key fields are now marked optional and labeled "not
-  yet wired" so the install UI doesn't promise capability the code
-  doesn't yet have.
-- **No `.mcpb` bundle yet.** Build script lands in P5 atomically with
-  the manifest's `manifest_version` bump, `uv`-shaped launcher, and
-  `${user_config.*}` substitution. Until then, the package runs from
-  source via `python -m roundtable`.
-- **No CI yet.** Tests pass locally; GitHub Actions workflows land
-  with P5.
+- P4 provider clients: real OpenAI (`gpt-4o`), Google
+  (`gemini-2.5-pro`), and DeepSeek (`deepseek-chat`) provider
+  implementations against their respective SDKs, with SDK-level
+  retries disabled to honor the no-retry-in-round invariant.
+  21 mocked unit tests cover constructor key-check, successful
+  call shape, error propagation, cost estimation, and the
+  no-retry regression guard.
+- P4-wiring: `_resolve_panel()` now detects API keys in the
+  environment and instantiates real providers when keys are
+  present. Any missing key falls back to FakeProvider with a
+  warning to stderr, so the server boots and runs even with no
+  keys configured. Explicit `models=["fake-..."]` always
+  resolves to FakeProvider regardless of env state — preserves
+  integration-test stability.
+- `InvalidProviderOutput` exception class in
+  `roundtable.providers.base`. Providers raise it when a
+  response is reachable but malformed (e.g., empty content,
+  schema mismatch); the dispatcher maps it to
+  `ErrorClass.INVALID_OUTPUT`. Closes the gap where the
+  `invalid_output` enum value previously had no emitter.
+- Live smoke tests under `tests/live/`, gated by the `live`
+  pytest marker AND by per-provider API key env vars.
+  Maintainer-only check per D8; NOT run in CI; not a release
+  gate.
+- README banner updated to reflect real-dispatch capability.
+  Install instructions now describe configuring API keys.
+- Manifest API key descriptions rewritten to explain the
+  per-key opt-in behavior with FakeProvider fallback.
+- 94 unit + integration tests, no network, ~9s. (3 live tests
+  also exist; 1 skips automatically without API keys, the other 2
+  resolve based on whichever provider keys are configured.)
 
 ## [0.1.0] — TBD
 

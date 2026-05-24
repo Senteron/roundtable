@@ -89,3 +89,24 @@ async def test_no_retry_attempted_after_error() -> None:
     # what any retry attempt would add.
     assert out.total_elapsed_seconds < 0.5
     assert out.responses[0].error is ErrorClass.API_ERROR
+
+
+@pytest.mark.asyncio
+async def test_invalid_output_classified_separately_from_api_error() -> None:
+    """A provider that raises InvalidProviderOutput must produce the
+    INVALID_OUTPUT error class, not the generic API_ERROR. Closes
+    Finding 3 from the May 2026 re-review (the invalid_output enum
+    value previously had no emitter).
+    """
+    p_invalid = FakeProvider(name="bad", behavior="invalid_output")
+    p_ok = FakeProvider(name="ok", behavior="echo")
+
+    out = await dispatch(
+        RoundInput(prompt="hi"),
+        providers=[p_invalid, p_ok],
+    )
+
+    assert out.responses[0].error is ErrorClass.INVALID_OUTPUT
+    assert out.responses[0].answer is None
+    assert out.responses[1].error is None
+    assert out.errors[0].error is ErrorClass.INVALID_OUTPUT

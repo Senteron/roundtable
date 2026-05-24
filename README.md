@@ -3,14 +3,11 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-> **⚠️ Status: v0.1 development preview — uses placeholder providers.**
-> The server is functional and the MCP contract is stable, but the
-> default panel returns `FakeProvider` echo responses, not real
-> OpenAI / Google / DeepSeek answers. **Real provider dispatch lands
-> in v0.2 (per [docs/review-concerns-plan.md](docs/review-concerns-plan.md)
-> P4).** Do not install the `.mcpb` bundle expecting working
-> multi-model dispatch yet. API key fields in the manifest are marked
-> optional and are not yet read by the code.
+**Status:** v0.1.0. Real OpenAI / Google / DeepSeek dispatch when
+the corresponding API key is configured; transparent fallback to a
+placeholder `FakeProvider` (with a clear stderr warning) for any
+provider whose key is missing, so the server boots and runs even
+with no keys configured.
 
 ## What it does
 
@@ -56,11 +53,12 @@ The bundle launches the MCP server via `uv run`; Claude Desktop's
 extension runtime provisions the dependencies from
 [mcpb/pyproject.toml](mcpb/pyproject.toml) automatically.
 
-**This v0.1 bundle still uses placeholder providers per the banner
-above.** Configuring API keys in the Claude Desktop install dialog
-is supported (the fields are present and optional) but the keys are
-not yet read by the code; the panel returns echo responses. Real
-multi-model dispatch lands in v0.2 (P4).
+Configure API keys in the Claude Desktop install dialog to enable
+real dispatch. Any key field left blank turns that provider into a
+FakeProvider stub for the panel — the server logs a warning but
+continues to run, which keeps the install dialog optional and lets
+you bring up the bundle with whichever subset of providers you have
+keys for.
 
 ## License
 

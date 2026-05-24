@@ -40,3 +40,15 @@ class Provider(Protocol):
         prompt: str,
         timeout_seconds: float,
     ) -> ProviderResponse: ...
+
+
+class InvalidProviderOutput(Exception):
+    """Raised when a provider returned a response that violates the
+    expected shape (e.g., empty completion when content was required,
+    malformed JSON when structured output was requested).
+
+    The dispatcher catches this and emits ErrorClass.INVALID_OUTPUT
+    rather than the generic API_ERROR, so callers can distinguish
+    "the provider was reachable but its answer was unusable" from
+    "the provider call itself failed."
+    """
