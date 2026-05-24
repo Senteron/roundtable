@@ -33,7 +33,7 @@ predecessor CLI tool) on the same author's machine and prompts.
 ### 1.1 The "internal" corpus (primary)
 
 Location (off-repo, on author's machine):
-`/Users/tom/Documents/crucible-internal/runs/`
+`~/.../crucible-internal/runs/`
 
 Contents at time of analysis (May 2026):
 
@@ -50,11 +50,12 @@ Date range: **2026-02-14 → 2026-05-22** (14 weeks).
 Unique prompt prefixes (first 100 chars): **59 of 67** (8 retries on
 the same prompt; mostly debugging iterations).
 Single author, single machine, prompts drawn from real personal
-workflow (career advice, code review, product/UI design, healthcare).
+workflow (mix of professional and technical questions; specific
+prompt content is not committed to the repo).
 
 ### 1.2 The "archive" corpus (pre-peer-review baseline)
 
-Location: `/Users/tom/Documents/GitHub/crucible-old/runs/`. **11 real
+Location: `~/.../crucible-old/runs/`. **11 real
 runs**, all single-shot judge-only, all from Feb 9–13, 2026. Schema
 predates `head_to_head_rounds` and the vote fields, so this corpus
 cannot speak to convergence behavior. Used here only as the source of
@@ -66,13 +67,13 @@ Generated specifically to validate that the corpus findings still hold
 on the current Senteron build, against a default 3-model panel
 (`claude` / `gpt` / `gemini`). Five runs:
 
-| File | Prompt source | Wall (s) | Cost ($) | Rounds | Stop votes |
+| File | Prompt size | Wall (s) | Cost ($) | Rounds | Stop votes |
 |---|---|---|---|---|---|
-| `senteron_20260523_203234.json` | walk-after-lunch (61 chars) | 105 | 0.049 | 1 | 2/2 |
-| `senteron_20260524_080451.json` | effective meetings (61 chars) | 216 | 0.087 | 1 | 2/2 |
-| `senteron_20260524_080828.json` | physician executive (1.5k) | 264 | 0.240 | 1 | 2/2 |
-| `senteron_20260524_081252.json` | README business plan (7.9k) | 376 | 0.336 | 1 | 2/2 |
-| `senteron_20260524_081908.json` | Streamlit review (17k) | 244 | 0.439 | 1 | 2/2 |
+| `senteron_20260523_203234.json` | tiny advice (61 chars) | 105 | 0.049 | 1 | 2/2 |
+| `senteron_20260524_080451.json` | tiny advice (61 chars) | 216 | 0.087 | 1 | 2/2 |
+| `senteron_20260524_080828.json` | professional CV (1.5k) | 264 | 0.240 | 1 | 2/2 |
+| `senteron_20260524_081252.json` | long technical README (7.9k) | 376 | 0.336 | 1 | 2/2 |
+| `senteron_20260524_081908.json` | code review (17k) | 244 | 0.439 | 1 | 2/2 |
 
 These runs live in the Senteron working copy's `runs/` directory and
 are not committed to either repo (Senteron's `runs/` is gitignored;
@@ -191,9 +192,8 @@ appended real analysis. Example:
 ```
 File: crucible_20260214_091006.json (r0, claude, vote=False)
 continuation_reason: "No material changes expected. I've integrated
-  the competitor's strongest additions (emphasizing novelty prevention
-  of monotony, contract/on-call as entry points, mission-driven
-  environments, blending [...]"
+  the competitor's strongest additions [substantive domain-specific
+  reasoning continues for ~150 words]"
 ```
 
 This signature — a fixed prefix followed by genuine reasoning — is
@@ -425,7 +425,7 @@ From 67 corpus runs:
 From 5 fresh runs (default 3-model panel):
 
 - Median: **$0.24**
-- Range: $0.05 (tiny prompt) → $0.44 (17k-char Streamlit review)
+- Range: $0.05 (tiny prompt) → $0.44 (17k-char code review)
 
 The fresh-run median is higher than the corpus median because the
 corpus includes more tiny-prompt runs; the fresh runs lean toward
@@ -541,10 +541,11 @@ trade-off.
 
 To re-verify any number in this document:
 
-1. **Internal corpus stats** — open `/Users/tom/Documents/crucible-
-internal/runs/` and re-run the analysis script that produced the
-tables (see git history of this commit; the script is not committed
-because it operates on private prompt content).
+1. **Internal corpus stats** — open the author's local
+   `crucible-internal/runs/` directory and re-run the analysis
+   script that produced the tables (see git history of this
+   commit; the script is not committed because it operates on
+   private prompt content).
 2. **Fresh comparison runs** — re-run from the Senteron CLI:
    ```bash
    ./senteron.sh "<prompt>" --pipeline peer_review --save
