@@ -77,7 +77,10 @@ TOOL_DESCRIPTION = (
     "`total_cost_usd` in the response reflects panel dispatch only "
     "(your provider invoices); orchestrator-side tokens are billed "
     "separately to your Anthropic account and typically dominate by "
-    "10-30x."
+    "10-30x. The response also includes `resolved_models` — the "
+    "panel names actually dispatched to in caller order — so you "
+    "can confirm an override took effect rather than silently "
+    "falling back to the default panel."
 )
 
 INPUT_SCHEMA: dict[str, Any] = {
@@ -149,16 +152,20 @@ INPUT_SCHEMA: dict[str, Any] = {
         },
         "models": {
             "type": ["array", "null"],
+            "minItems": 1,
             "description": (
-                "Optional panel override. If omitted, the default "
-                "panel (resolved from configured API keys) is used: "
-                "'gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat'. "
+                "Optional panel override. Omit or pass null to use "
+                "the default panel (resolved from configured API "
+                "keys): 'gpt-4o' + 'gemini-2.5-pro' + "
+                "'deepseek-chat'. Empty arrays are rejected — pass "
+                "an explicit list of at least one model name. "
                 "Names in the panel registry that resolve to a real "
                 "provider: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', "
                 "'gemini-2.5-pro', 'gemini-3.1-pro-preview', "
                 "'deepseek-chat', 'deepseek-reasoner'. Any other "
                 "name returns error_class 'unknown_model' for that "
-                "slot."
+                "slot. The response includes `resolved_models` so "
+                "you can confirm the override took effect."
             ),
             "items": {"type": "string"},
         },
@@ -353,7 +360,15 @@ def build_server() -> Server:
             )
         ]
 
-    @server.call_tool()
+    # validate_input=False: the MCP SDK's jsonschema validation
+    # runs before _call_tool and rejects the JSON-string-of-array
+    # shape that Claude Code (claude-ai/0.1.0, protocol
+    # 2025-11-25) sends for array parameters. We need to see the
+    # raw string to coerce it; the Pydantic RoundInput validator
+    # then enforces the public contract. The SDK-level check
+    # would be redundant either way — every shape it would
+    # reject is also rejected by RoundInput.
+    @server.call_tool(validate_input=False)
     async def _call_tool(
         name: str, arguments: dict[str, Any] | None
     ) -> list[types.TextContent]:
@@ -384,15 +399,19 @@ def build_server() -> Server:
         if providers:
             dispatched = await dispatch(inputs, providers)
         else:
-            # All entries were unknown-model sentinels (or the caller
-            # passed models=[]). Skip dispatch; emit a zero-cost,
-            # zero-elapsed RoundOutput shell that the merge below
-            # fills with error stubs.
+            # All entries were unknown-model sentinels. (As of v0.4,
+            # models=[] is rejected by RoundInput so we never get
+            # here on an empty array — only on an all-unknown panel.)
+            # Skip dispatch; emit a zero-cost, zero-elapsed
+            # RoundOutput shell that the merge below fills with
+            # error stubs. resolved_models is rewritten below to use
+            # the full caller-order list.
             current_round = inputs.round if inputs.round is not None else 0
             dispatched = RoundOutput(
                 round=current_round,
                 responses=[],
                 errors=[],
+                resolved_models=[],
                 total_elapsed_seconds=0.0,
                 total_cost_usd=0.0,
             )
@@ -428,10 +447,16 @@ def build_server() -> Server:
             else:
                 merged_responses.append(dispatched_by_name[slot.name])
 
+        # resolved_models echoes the full caller-order list (real
+        # providers, fake-* fixtures, and unknown_model sentinels)
+        # so the orchestrator can compare what dispatched against
+        # what it intended without reading its own outgoing
+        # tool-call JSON. This is the v0.4 diagnostic feature.
         output = RoundOutput(
             round=dispatched.round,
             responses=merged_responses,
             errors=merged_errors,
+            resolved_models=[slot.name for slot in resolved],
             total_elapsed_seconds=dispatched.total_elapsed_seconds,
             total_cost_usd=dispatched.total_cost_usd,
         )

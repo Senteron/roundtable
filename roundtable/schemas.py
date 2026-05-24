@@ -27,11 +27,31 @@ Decisions enforced by these models:
   prior-round bundle; mixed rounds would produce a confusing
   "PANEL ANSWERS (round ?)" header and almost certainly indicate
   a caller mistake.
+- v0.4: `RoundInput` rejects `models=[]` as invalid_input. The
+  protocol doesn't echo arguments, so an orchestrator that
+  intended to override but had its field stripped by the harness
+  cannot tell the difference between "I sent an empty array" and
+  "my models field was dropped" without an explicit error.
+- v0.4: `RoundOutput.resolved_models` echoes the panel names
+  actually dispatched to (registry names, fake-* fixtures, or
+  unknown_model sentinels). Lets the orchestrator confirm what
+  ran versus what it intended without having to read its own
+  outgoing tool-call JSON.
+- v0.4: `RoundInput.models` accepts a JSON-encoded string of an
+  array of strings (e.g. `'["gpt-5"]'`) in addition to a real
+  array. Workaround for Claude Code's MCP client, which was
+  observed shipping array parameters as JSON-stringified payloads
+  even when the inputSchema declared `type: array`. The
+  coercion is narrow and only fires when the value is a `str`
+  that parses cleanly to `list[str]`; malformed input still
+  fails the normal type check.
 """
 
 from __future__ import annotations
 
+import json
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -84,6 +104,47 @@ class RoundInput(BaseModel):
     models: list[str] | None = None
     round: int | None = Field(default=None, ge=0)
     per_call_timeout_seconds: int = Field(default=90, ge=1, le=180)
+
+    @field_validator("models", mode="before")
+    @classmethod
+    def _coerce_json_string_models(cls, v: Any) -> Any:
+        """Workaround for Claude Code's MCP client (observed
+        2026-05-24, claude-ai/0.1.0 protocol 2025-11-25): array
+        parameters declared in the tool's inputSchema as
+        `type: ["array", "null"]` are nonetheless shipped as
+        JSON-encoded *strings* in the tools/call arguments. The
+        result is a validation error like `'["gpt-5"]' is not of
+        type 'array', 'null'` even though the caller and schema
+        agreed on the array shape.
+
+        This validator detects a string that parses as a JSON
+        array of strings and accepts it. Everything else passes
+        through unchanged for the normal pydantic type-check to
+        handle (including the rejection of malformed input). The
+        coercion is narrow: it only fires when `v` is a `str`
+        that parses cleanly to a list of strings.
+        """
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return v
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                return parsed
+        return v
+
+    @field_validator("models")
+    @classmethod
+    def _models_not_empty_if_present(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None and len(v) == 0:
+            raise ValueError(
+                "models must be omitted (or null) to use the default "
+                "panel; an empty array is rejected so an orchestrator "
+                "whose models field was stripped by the harness can "
+                "tell the difference between 'I sent an empty array' "
+                "and 'my field was dropped'."
+            )
+        return v
 
     @model_validator(mode="after")
     def _prior_entries_share_a_round(self) -> RoundInput:
@@ -143,5 +204,21 @@ class RoundOutput(BaseModel):
     round: int = 0
     responses: list[ModelResponse]
     errors: list[ModelError]
+    # v0.4: model names actually dispatched to, in caller order.
+    # An orchestrator can compare this against the names it passed
+    # in `models` to confirm the override took effect. When the
+    # default panel runs (caller passed no `models` field), this
+    # field still reports the resolved default lineup so the
+    # orchestrator has explicit visibility into which panel ran.
+    #
+    # Two layers populate this field. `dispatcher.dispatch()` sets
+    # it to the names of providers it actually dispatched to
+    # (drops unknown_model sentinels). The MCP server wrapper in
+    # `mcp_server._call_tool` overrides that with the full
+    # caller-order list including unknown_model sentinels, so the
+    # over-the-wire response reflects every slot the caller asked
+    # for. Direct callers of `dispatch()` will see the dispatched-
+    # only form; only the MCP-wrapped path includes sentinels.
+    resolved_models: list[str]
     total_elapsed_seconds: float = Field(ge=0)
     total_cost_usd: float = Field(default=0.0, ge=0)

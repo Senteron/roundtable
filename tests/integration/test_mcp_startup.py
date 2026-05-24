@@ -57,6 +57,67 @@ async def test_server_info_reports_package_version() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resolved_models_echoed_in_response() -> None:
+    """v0.4: every response carries resolved_models so an
+    orchestrator can confirm which panel actually ran without
+    reading its own outgoing tool-call JSON. Motivated by
+    2026-05-24 observation that an orchestrator can otherwise
+    hallucinate an entire root-cause story when its override
+    never reached the server.
+    """
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "ping",
+                    "models": ["fake-a", "fake-b"],
+                },
+            )
+
+    payload = json.loads(result.content[0].text)
+    assert payload["resolved_models"] == ["fake-a", "fake-b"], (
+        "resolved_models must echo the caller's panel in order"
+    )
+
+
+@pytest.mark.asyncio
+async def test_models_field_accepts_json_string_workaround() -> None:
+    """v0.4 Claude Code workaround: the MCP client was observed
+    shipping array parameters as JSON-encoded strings. The server
+    accepts that shape and coerces it to a list before dispatch.
+    The resolved_models echo confirms the parsed list reached
+    the panel.
+    """
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "ping",
+                    "models": '["fake-a", "fake-b"]',
+                },
+            )
+
+    payload = json.loads(result.content[0].text)
+    # If the workaround works, we get a normal response with the
+    # parsed panel. If it doesn't, we'd get an `error: invalid_input`
+    # payload from the call_tool exception handler instead.
+    assert "error" not in payload, payload
+    assert payload["resolved_models"] == ["fake-a", "fake-b"]
+
+
+@pytest.mark.asyncio
 async def test_round_zero_end_to_end() -> None:
     params = StdioServerParameters(
         command=sys.executable,
@@ -133,10 +194,13 @@ async def test_round_one_plus_with_prior_answers() -> None:
 
 @pytest.mark.asyncio
 async def test_invalid_input_does_not_crash_connection() -> None:
-    """Empty prompt is rejected by the MCP SDK's own input-schema
-    validation (driven by the `inputSchema` we declare). The
-    connection must remain usable for the next call — we verify by
-    making a valid call after the rejection.
+    """Empty prompt is rejected by Pydantic-level validation in
+    _call_tool. (As of v0.4, the MCP SDK's pre-validation is
+    disabled via validate_input=False so the Claude Code
+    JSON-string-of-array workaround can run; Pydantic catches
+    everything the SDK would have caught and more.) The
+    connection must remain usable for the next call — we verify
+    by making a valid call after the rejection.
     """
     params = StdioServerParameters(
         command=sys.executable,
@@ -150,11 +214,13 @@ async def test_invalid_input_does_not_crash_connection() -> None:
                 "roundtable_round",
                 {"prompt": "", "models": ["fake-a"]},
             )
-            # The SDK rejects this before our handler runs. Either
-            # isError=True or the text content reports the validation
-            # failure; both shapes are acceptable, the key invariant
-            # is that the connection survives.
-            assert bad.isError or "validation" in bad.content[0].text.lower()
+            # The handler returns a TextContent JSON payload with
+            # {"error": "invalid_input", "detail": [...]} on a
+            # Pydantic rejection. isError stays False because the
+            # call itself succeeded — the response just reports the
+            # bad input. The invariant we care about is that the
+            # connection survives.
+            assert bad.isError or "invalid_input" in bad.content[0].text
 
             good = await session.call_tool(
                 "roundtable_round",

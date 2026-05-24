@@ -3,7 +3,7 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.3.1. Real OpenAI / Google / DeepSeek dispatch when
+**Status:** v0.4.0. Real OpenAI / Google / DeepSeek dispatch when
 the corresponding API key is configured; transparent fallback to a
 placeholder `FakeProvider` (with a clear stderr warning) for any
 provider whose key is missing, so the server boots and runs even
@@ -40,10 +40,10 @@ shuffling text between browser tabs.
 The current installable `.mcpb` bundle is committed to
 [dist/](dist/). To install in Claude Desktop:
 
-1. Download `dist/roundtable-0.3.1.mcpb` from this repo (or grab it
-   from the [v0.3.1 release page](https://github.com/Senteron/roundtable/releases/tag/v0.3.1)).
-2. Verify the checksum against `dist/roundtable-0.3.1.mcpb.sha256`
-   (`shasum -a 256 -c roundtable-0.3.1.mcpb.sha256`).
+1. Download `dist/roundtable-0.4.0.mcpb` from this repo (or grab it
+   from the [v0.4.0 release page](https://github.com/Senteron/roundtable/releases/tag/v0.4.0)).
+2. Verify the checksum against `dist/roundtable-0.4.0.mcpb.sha256`
+   (`shasum -a 256 -c roundtable-0.4.0.mcpb.sha256`).
 3. Open Claude Desktop → Settings → Extensions → Install from file →
    select the `.mcpb`.
 

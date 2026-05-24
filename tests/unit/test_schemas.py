@@ -175,10 +175,12 @@ class TestRoundOutput:
                 )
             ],
             errors=[],
+            resolved_models=["gpt-4o"],
             total_elapsed_seconds=0.1,
         )
         assert out.round == 0
         assert out.total_cost_usd == 0.0
+        assert out.resolved_models == ["gpt-4o"]
 
     def test_error_stub_shape(self) -> None:
         out = RoundOutput(
@@ -191,11 +193,73 @@ class TestRoundOutput:
                 )
             ],
             errors=[ModelError(model="gpt-4o", error=ErrorClass.TIMEOUT)],
+            resolved_models=["gpt-4o"],
             total_elapsed_seconds=0.1,
         )
         assert out.responses[0].answer is None
         assert out.responses[0].error is ErrorClass.TIMEOUT
         assert out.errors[0].error is ErrorClass.TIMEOUT
+        assert out.resolved_models == ["gpt-4o"]
+
+    def test_resolved_models_is_required(self) -> None:
+        # v0.4 schema change: resolved_models has no default so
+        # callers can't silently omit it and ship a malformed
+        # response that hides which panel actually ran.
+        with pytest.raises(ValidationError):
+            RoundOutput(
+                responses=[],
+                errors=[],
+                total_elapsed_seconds=0.0,
+            )
+
+
+class TestRoundInputModelsField:
+    """v0.4 models-field behavior: empty arrays are rejected, and
+    a JSON-encoded string of a string array is accepted as a
+    workaround for Claude Code's MCP client which ships array
+    parameters as strings.
+    """
+
+    def test_empty_models_array_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            RoundInput(prompt="hi", models=[])
+        assert "empty array" in str(exc.value)
+
+    def test_null_models_accepted_as_default_panel_marker(self) -> None:
+        ri = RoundInput(prompt="hi", models=None)
+        assert ri.models is None
+
+    def test_omitted_models_accepted(self) -> None:
+        ri = RoundInput(prompt="hi")
+        assert ri.models is None
+
+    def test_real_array_accepted(self) -> None:
+        ri = RoundInput(prompt="hi", models=["gpt-4o", "gemini-2.5-pro"])
+        assert ri.models == ["gpt-4o", "gemini-2.5-pro"]
+
+    def test_json_string_array_coerced_to_list(self) -> None:
+        # The exact failure mode from 2026-05-24 Claude Code logs:
+        # the array shipped as the JSON-string literal.
+        ri = RoundInput.model_validate(
+            {
+                "prompt": "hi",
+                "models": '["gpt-5.5", "gemini-3.1-pro-preview", "deepseek-reasoner"]',
+            }
+        )
+        assert ri.models == ["gpt-5.5", "gemini-3.1-pro-preview", "deepseek-reasoner"]
+
+    def test_json_string_with_non_string_items_rejected(self) -> None:
+        # Coercion is narrow: only str-of-list-of-strings. A JSON
+        # string of a list of ints should NOT be coerced; pydantic
+        # then rejects it on type-check.
+        with pytest.raises(ValidationError):
+            RoundInput.model_validate({"prompt": "hi", "models": "[1, 2, 3]"})
+
+    def test_non_json_string_rejected(self) -> None:
+        # A bare string that isn't valid JSON should fall through
+        # to pydantic's normal type check and fail.
+        with pytest.raises(ValidationError):
+            RoundInput.model_validate({"prompt": "hi", "models": "gpt-4o"})
 
 
 class TestRoundInputSingleRoundInvariant:
