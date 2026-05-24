@@ -231,3 +231,51 @@ async def test_prior_failures_round_trip_through_mcp() -> None:
     assert framed_answer != raw_answer
 
 
+@pytest.mark.asyncio
+async def test_mixed_round_bundle_returns_invalid_input_not_crash() -> None:
+    """P3.5: prior_answers and prior_failures must share a round
+    number. A caller sending a mixed-round bundle must get a
+    structured invalid_input payload, not a server crash or
+    silently-corrupted framing.
+    """
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "roundtable_round",
+                {
+                    "prompt": "Q?",
+                    "round": 2,
+                    "models": ["fake-a"],
+                    "prior_answers": [
+                        {
+                            "model": "claude",
+                            "source": "orchestrator",
+                            "round": 0,
+                            "answer": "draft",
+                        },
+                    ],
+                    "prior_failures": [
+                        {
+                            "model": "gemini",
+                            "source": "panelist",
+                            "round": 1,  # mismatched on purpose
+                            "error_class": "timeout",
+                        },
+                    ],
+                },
+            )
+
+    # The Pydantic validator raises ValidationError, which the MCP
+    # server catches and returns as a JSON error payload (per the
+    # existing invalid-input path in mcp_server.py). The connection
+    # stays alive.
+    payload = json.loads(result.content[0].text)
+    assert payload.get("error") == "invalid_input"
+    detail_text = json.dumps(payload.get("detail", []))
+    assert "share a single round number" in detail_text
+
