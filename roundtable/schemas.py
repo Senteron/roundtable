@@ -16,13 +16,19 @@ Decisions enforced by these models:
   round produced the answer.
 - D4: `ErrorClass` includes `context_overflow` as a stable string
   for oversize framed prompts.
+- P3.5: `RoundInput` enforces that all `prior_answers` and
+  `prior_failures` entries share a single round number. The tool
+  description and the framing template both presume a coherent
+  prior-round bundle; mixed rounds would produce a confusing
+  "PANEL ANSWERS (round ?)" header and almost certainly indicate
+  a caller mistake.
 """
 
 from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Source(str, Enum):
@@ -72,6 +78,25 @@ class RoundInput(BaseModel):
     models: list[str] | None = None
     round: int | None = Field(default=None, ge=0)
     per_call_timeout_seconds: int = Field(default=90, ge=1, le=180)
+
+    @model_validator(mode="after")
+    def _prior_entries_share_a_round(self) -> RoundInput:
+        """All prior_answers and prior_failures must come from the
+        same prior round. Mixed rounds in a single bundle would
+        produce a confusing framing prompt ("PANEL ANSWERS (round ?)")
+        and almost certainly indicate a caller mistake.
+        """
+        rounds: set[int] = set()
+        for a in self.prior_answers or []:
+            rounds.add(a.round)
+        for f in self.prior_failures or []:
+            rounds.add(f.round)
+        if len(rounds) > 1:
+            raise ValueError(
+                f"prior_answers and prior_failures must share a single "
+                f"round number; got {sorted(rounds)}"
+            )
+        return self
 
 
 class ModelResponse(BaseModel):

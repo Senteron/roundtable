@@ -19,7 +19,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Schemas, framing, dispatcher, FakeProvider, MCP server, manifest
   entry-point alignment — P0 through P2 plus P1.5 (D1 contract closure)
   per the plan.
-- 53 unit + integration tests, no network, ~5s.
+- P3 truth-in-packaging: README v0.1 preview banner, manifest API keys
+  marked optional with "not yet wired" labels.
+- P3.5 schema validator: `RoundInput` rejects bundles where
+  `prior_answers` and `prior_failures` carry mixed round numbers.
+  User-visible behavior change — previously such bundles would have
+  been accepted and produced a confused framing prompt; now they
+  return a structured `invalid_input` payload at the MCP boundary.
+- 61 unit + integration tests, no network, ~5s.
 
 ### Known limitations (v0.1 preview)
 

@@ -1,7 +1,8 @@
 """Schema validation: rejects malformed input, accepts canonical shape.
 
-D2 (source enum), D3 (round rename), D4 (context_overflow error class)
-are exercised here so the contract can't regress without breaking these.
+D2 (source enum), D3 (round rename), D4 (context_overflow error class),
+and P3.5 (single-round-per-bundle invariant) are exercised here so the
+contract can't regress without breaking these.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from roundtable.schemas import (
     ModelError,
     ModelResponse,
     PriorAnswer,
+    PriorFailure,
     RoundInput,
     RoundOutput,
     Source,
@@ -193,3 +195,100 @@ class TestRoundOutput:
         assert out.responses[0].answer is None
         assert out.responses[0].error is ErrorClass.TIMEOUT
         assert out.errors[0].error is ErrorClass.TIMEOUT
+
+
+class TestRoundInputSingleRoundInvariant:
+    """P3.5: prior_answers and prior_failures must share a single
+    round number. The framing template renders one
+    "PANEL ANSWERS (round N):" header; mixed N values would produce
+    a confusing bundle. The schema enforces it at the boundary.
+    """
+
+    def _ans(self, model: str, round_: int) -> PriorAnswer:
+        return PriorAnswer(
+            model=model,
+            source=Source.PANELIST,
+            round=round_,
+            answer="x",
+        )
+
+    def _fail(self, model: str, round_: int) -> PriorFailure:
+        return PriorFailure(
+            model=model,
+            source=Source.PANELIST,
+            round=round_,
+            error_class=ErrorClass.TIMEOUT,
+        )
+
+    def test_matching_rounds_accepted(self) -> None:
+        """Canonical happy path: answers and failures all from
+        round 0.
+        """
+        inp = RoundInput(
+            prompt="Q?",
+            round=1,
+            prior_answers=[self._ans("a", 0), self._ans("b", 0)],
+            prior_failures=[self._fail("c", 0)],
+        )
+        assert inp.prior_answers is not None
+        assert inp.prior_failures is not None
+
+    def test_only_answers_no_failures_accepted(self) -> None:
+        """Validator must not require both fields populated."""
+        inp = RoundInput(
+            prompt="Q?",
+            round=1,
+            prior_answers=[self._ans("a", 0), self._ans("b", 0)],
+        )
+        assert inp.prior_failures is None
+
+    def test_only_failures_no_answers_accepted(self) -> None:
+        """Failures alone (all panelists failed last round) is a
+        valid bundle.
+        """
+        inp = RoundInput(
+            prompt="Q?",
+            round=1,
+            prior_failures=[self._fail("a", 0), self._fail("b", 0)],
+        )
+        assert inp.prior_answers is None
+
+    def test_mixed_rounds_in_prior_answers_rejected(self) -> None:
+        """Two answers from different rounds → ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoundInput(
+                prompt="Q?",
+                round=2,
+                prior_answers=[self._ans("a", 0), self._ans("b", 1)],
+            )
+        assert "share a single round number" in str(exc_info.value)
+
+    def test_mixed_rounds_across_answers_and_failures_rejected(self) -> None:
+        """Answer from round 0 + failure from round 1 → ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            RoundInput(
+                prompt="Q?",
+                round=2,
+                prior_answers=[self._ans("a", 0)],
+                prior_failures=[self._fail("b", 1)],
+            )
+        msg = str(exc_info.value)
+        assert "share a single round number" in msg
+        assert "[0, 1]" in msg
+
+    def test_empty_bundles_accepted(self) -> None:
+        """No prior entries at all = round 0. Both fields None is
+        the canonical round-0 input.
+        """
+        inp = RoundInput(prompt="Q?")
+        assert inp.prior_answers is None
+        assert inp.prior_failures is None
+
+    def test_single_entry_passes_trivially(self) -> None:
+        """One entry can't conflict with itself."""
+        inp = RoundInput(
+            prompt="Q?",
+            round=1,
+            prior_answers=[self._ans("a", 0)],
+        )
+        assert len(inp.prior_answers) == 1
