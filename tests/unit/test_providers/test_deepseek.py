@@ -11,7 +11,7 @@ import pytest
 import respx
 
 from roundtable.providers.base import ProviderResponse
-from roundtable.providers.deepseek import DeepSeekProvider
+from roundtable.providers.deepseek import DeepSeekProvider, _estimate_cost_usd
 
 CHAT_URL = "https://api.deepseek.com/chat/completions"
 
@@ -112,3 +112,14 @@ async def test_cost_estimate_positive_for_nonzero_tokens() -> None:
 
     assert resp.estimated_cost_usd is not None
     assert resp.estimated_cost_usd > 0
+
+
+def test_cost_is_none_for_unknown_model() -> None:
+    # An override model not in _PRICING must report None rather than be
+    # billed at the default model's rate.
+    assert _estimate_cost_usd("not-a-real-model", 100, 50) is None
+
+
+def test_cost_is_known_for_listed_model() -> None:
+    assert _estimate_cost_usd("deepseek-chat", 1_000_000, 0) == pytest.approx(0.27)
+    assert _estimate_cost_usd("deepseek-chat", 0, 1_000_000) == pytest.approx(1.10)

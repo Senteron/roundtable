@@ -6,8 +6,12 @@ DeepSeek exposes an OpenAI-compatible API, so this provider reuses the
 immediately. Per-request timeout passes through the SDK's `timeout=`
 keyword, same pattern as `OpenAIProvider`.
 
-Pricing constants are commit-time estimates from DeepSeek's public
-pricing page. Update here when pricing changes; see CHANGELOG.
+Pricing is a per-model lookup table (`_PRICING`) keyed by model name,
+with `(input_per_M_USD, output_per_M_USD)` tuples. Models not in the
+table get `None` cost — better to omit a cost than to bill an override
+at the wrong rate. Entries here are commit-time estimates and use the
+non-cache tier; DeepSeek prices cache hits separately. Update when
+pricing changes; see CHANGELOG.
 """
 
 from __future__ import annotations
@@ -19,11 +23,11 @@ from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# DeepSeek public pricing for deepseek-chat, USD per 1M tokens
-# (commit-time estimate; non-cache prices).
+# DeepSeek public pricing, USD per 1M tokens (non-cache tier).
 # https://api-docs.deepseek.com/quick_start/pricing
-_PRICE_INPUT_PER_M_USD = 0.27
-_PRICE_OUTPUT_PER_M_USD = 1.10
+_PRICING: dict[str, tuple[float, float]] = {
+    "deepseek-chat": (0.27, 1.10),
+}
 
 DEFAULT_MODEL = "deepseek-chat"
 CONTEXT_WINDOW_TOKENS = 64_000
@@ -80,7 +84,7 @@ class DeepSeekProvider:
         completion_tokens = (
             getattr(resp.usage, "completion_tokens", None) if resp.usage else None
         )
-        cost = _estimate_cost_usd(prompt_tokens, completion_tokens)
+        cost = _estimate_cost_usd(self.name, prompt_tokens, completion_tokens)
         return ProviderResponse(
             text=text,
             elapsed_seconds=elapsed,
@@ -91,11 +95,16 @@ class DeepSeekProvider:
 
 
 def _estimate_cost_usd(
+    model: str,
     prompt_tokens: int | None,
     completion_tokens: int | None,
 ) -> float | None:
+    prices = _PRICING.get(model)
+    if prices is None:
+        return None
     if prompt_tokens is None and completion_tokens is None:
         return None
+    input_per_m, output_per_m = prices
     p = prompt_tokens or 0
     c = completion_tokens or 0
-    return (p * _PRICE_INPUT_PER_M_USD + c * _PRICE_OUTPUT_PER_M_USD) / 1_000_000
+    return (p * input_per_m + c * output_per_m) / 1_000_000

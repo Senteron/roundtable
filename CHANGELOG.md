@@ -7,6 +7,20 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Maintenance (no behavior change)
+
+- **Per-model pricing tables in providers.** Each provider
+  (`openai.py`, `google.py`, `deepseek.py`) now keys cost lookup off
+  a `_PRICING: dict[str, tuple[float, float]]` table rather than
+  module-global input/output constants. `_estimate_cost_usd` takes
+  the model name and returns `None` when the name is not in the
+  table — so a future override pointed at a model whose price isn't
+  yet calibrated will report no cost rather than be billed at the
+  default model's rate. The currently-shipped registry
+  (`gpt-4o`, `gemini-2.5-pro`, `deepseek-chat`) has identical
+  prices and identical behavior to 0.2.0; this is a refactor that
+  enables widening the registry in a later release.
+
 ## [0.2.0] — 2026-05-24
 
 ### Changed (behavior; orchestrator-visible)
