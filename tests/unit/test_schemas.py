@@ -63,7 +63,11 @@ class TestRoundInput:
 
     def test_rejects_timeout_above_max(self) -> None:
         with pytest.raises(ValidationError):
-            RoundInput(prompt="hi", per_call_timeout_seconds=181)
+            RoundInput(prompt="hi", per_call_timeout_seconds=301)
+
+    def test_accepts_timeout_at_max(self) -> None:
+        inp = RoundInput(prompt="hi", per_call_timeout_seconds=300)
+        assert inp.per_call_timeout_seconds == 300
 
     def test_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError):

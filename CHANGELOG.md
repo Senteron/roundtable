@@ -7,6 +7,40 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-26
+
+### Changed (orchestrator-visible)
+
+- **`per_call_timeout_seconds` upper bound raised from 180 to 300.**
+  The 180s cap predated the v0.3 registry widening that added
+  reasoning-class snapshots (`gpt-5.5`, `deepseek-reasoner`,
+  `gemini-3.1-pro-preview`). Post-deployment log review of seven
+  real `gpt-5.5` dispatches between 2026-05-24 and 2026-05-26
+  found four timeouts, including one at the 180s ceiling on a
+  ~7k-char prompt — i.e. the cap itself, not just the default,
+  was empirically too low for the registry as widened in v0.3.
+  Default stays at 90s; the cap is a backstop the orchestrator
+  can opt into when overriding to reasoning-class models. See
+  `docs/decisions.md §19.6` for the underlying empirical envelope.
+- **Tool description** now documents the timeout envelope and
+  tells the orchestrator to raise `per_call_timeout_seconds` to
+  180–300 when overriding `models` to include a reasoning-class
+  snapshot on a substantive prompt. One of the two version-bump-
+  discipline strings per `CLAUDE.md` (framing prompt unchanged in
+  this release).
+
+### Versioning note
+
+This is a patch release per the user-confirmed call, despite the
+tool description being one of the two version-bump-discipline
+strings flagged in `CLAUDE.md`. The reasoning recorded with the
+decision: the underlying behavior change is a cap raise the
+orchestrator can opt into, not a default change; existing callers
+that don't pass `per_call_timeout_seconds > 180` see no
+observable difference. A future tool-description edit that
+changes meaningful default behavior should still take the minor
+bump.
+
 ## [0.4.0] — 2026-05-24
 
 ### Added (orchestrator-visible)

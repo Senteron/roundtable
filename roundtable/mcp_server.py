@@ -74,6 +74,15 @@ TOOL_DESCRIPTION = (
     "simple ones. The tool returns each model's response as-is; it "
     "does not synthesize, judge, or vote. A round takes 60-180s "
     "typically; tell the user it'll take a few minutes. "
+    "`per_call_timeout_seconds` defaults to 90 and accepts 1-300; "
+    "the default was calibrated for the v0.1 non-thinking lineup "
+    "('gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat') and is too "
+    "tight for reasoning-class overrides on substantive prompts. "
+    "When overriding `models` to include 'gpt-5.5', "
+    "'deepseek-reasoner', or 'gemini-3.1-pro-preview' on a prompt "
+    ">3k chars, raise `per_call_timeout_seconds` to 180-300; "
+    "otherwise the slow seat will return error_class 'timeout' "
+    "and you'll re-dispatch with peer answers as `prior_answers`. "
     "`total_cost_usd` in the response reflects panel dispatch only "
     "(your provider invoices); orchestrator-side tokens are billed "
     "separately to your Anthropic account and typically dominate by "
@@ -177,7 +186,7 @@ INPUT_SCHEMA: dict[str, Any] = {
         "per_call_timeout_seconds": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 180,
+            "maximum": 300,
             "default": 90,
         },
     },

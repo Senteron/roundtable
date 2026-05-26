@@ -45,6 +45,15 @@ Decisions enforced by these models:
   coercion is narrow and only fires when the value is a `str`
   that parses cleanly to `list[str]`; malformed input still
   fails the normal type check.
+- v0.4.1: `per_call_timeout_seconds` upper bound raised from 180
+  to 300. The 180s cap predated the v0.3 registry widening that
+  added reasoning-class snapshots (`gpt-5.5`, `deepseek-reasoner`,
+  `gemini-3.1-pro-preview`). Post-deployment log review
+  (`docs/decisions.md §19.6`) found GPT-5.5 timing out at the
+  180s ceiling on substantive prompts (>3k chars) — i.e. the cap
+  itself, not just the default, was empirically too low. Default
+  stays at 90s; the cap is a backstop the orchestrator can opt
+  into when overriding to reasoning-class models.
 """
 
 from __future__ import annotations
@@ -103,7 +112,7 @@ class RoundInput(BaseModel):
     prior_failures: list[PriorFailure] | None = None
     models: list[str] | None = None
     round: int | None = Field(default=None, ge=0)
-    per_call_timeout_seconds: int = Field(default=90, ge=1, le=180)
+    per_call_timeout_seconds: int = Field(default=90, ge=1, le=300)
 
     @field_validator("models", mode="before")
     @classmethod

@@ -920,8 +920,6 @@ updated to reference this.
 - The framing prompt itself (`framing.py`). The text is
   load-bearing per §6; live-run evidence has not contradicted
   any of its design decisions.
-- The tool description. Live runs have not surfaced new
-  language the description should carry.
 - The default panel composition. The §11 patterns hold; the
   re-validation work in §17.4 remains the right v0.2 task.
 - The no-persistence invariant. No live-run output has been
@@ -932,6 +930,77 @@ slightly (see the v0.1.3 release note), §6 gains a sentence
 about orchestrator-prompt design, and §11 gains an inline
 cross-reference to §19's live-run-era observations so the corpus
 and post-deployment evidence are findable from each other.
+§19.6 (added in v0.4.1) records a tool-description and
+schema-cap change driven by live-run timeout evidence; the
+earlier "live runs have not surfaced new tool-description
+language" claim in this section was true through 2026-05-23 and
+is now superseded by §19.6.
+
+### 19.6 `per_call_timeout_seconds` cap raised from 180 to 300 (v0.4.1)
+
+Between 2026-05-24 and 2026-05-26, seven `gpt-5.5` dispatch
+attempts were logged through the deployed bundle (a mix of
+v0.3.x and v0.4.0); one was routed to FakeProvider by the
+pre-v0.2 silent-fallback path and is footnoted below, leaving
+six real OpenAI calls. The empirical envelope (date, prompt
+size, timeout passed, outcome, elapsed):
+
+- 05-24 16:43 — ~11k chars, default 90s → succeeded† in 0.0001s
+- 05-24 18:13 — ~400 chars, default 90s → succeeded in 13.1s
+- 05-24 21:57 — ~3k chars, default 90s → timeout at 90.0s
+- 05-24 21:58 — ~7k chars, default 90s → timeout at 90.0s
+- 05-24 22:02 — ~7k chars, 180s (solo retry) → **timeout at the
+  cap**, 180.0s
+- 05-26 18:01 — ~3k chars, default 90s → timeout at 90.0s
+- 05-26 18:06 — ~5k chars, 180s (solo retry, with
+  `prior_answers` from the round-0 peers) → succeeded in 78.6s
+
+† The 05-24 16:43 success returned a 12k-char "answer" in 89µs
+at an estimated cost of $0.0001. This is a FakeProvider echo,
+not a real OpenAI call. It predates the v0.2 fix that closed
+the silent-FakeProvider fallback for unknown registry names
+(the call also included `gemini-3-pro`, which was unknown to
+the registry at that time). The v0.2 change ships the correct
+`unknown_model` error class for this case now; the historical
+log line is the pre-fix behavior, not a regression.
+
+The load-bearing data point is **05-24 22:02: a single-model
+retry of `gpt-5.5` at the prior cap of 180s also timed out**.
+The earlier 0.3.x/0.4.0 cap was therefore empirically too low,
+not just the default — raising the default alone would not have
+saved that round. The v0.4.1 change raises the cap to 300; the
+default stays at 90 because the non-reasoning lineup
+(`gpt-4o` + `gemini-2.5-pro` + `deepseek-chat`) does not need
+more, and the tool description now points the orchestrator at
+the higher cap when it overrides to reasoning-class models.
+
+Why not just raise the default? Three reasons. (1) A higher
+default would make every call to the cheap non-reasoning lineup
+wait longer for failure detection, since a stuck non-reasoning
+seat would now block the round for 300s instead of 90s. (2) The
+orchestrator has the information to set the timeout intelligently
+— it knows which models it's about to dispatch to. The right
+place for that policy is the orchestrator, with the tool
+description teaching the policy. (3) Auto-retry-on-timeout was
+rejected for the same reason it was rejected in v0.1: the N-1
+tolerance invariant says the next round naturally re-attempts;
+the orchestrator already gets `prior_failures` and can re-dispatch
+the failed model alone at a higher timeout. The 2026-05-26
+WealthTrace deliberation is the worked example — round 0 timed
+out at 90s; round 1 with `models=["gpt-5.5"]`,
+`per_call_timeout_seconds=180`, and Gemini+DeepSeek answers
+threaded through `prior_answers` succeeded in 78.6s.
+
+What this does not address: the 2026-05-24 22:02 retry timing
+out at 180s suggests there is a tail beyond 180s for some
+substantive prompts. The cap raise to 300s covers the long
+tail; whether to publish a more conservative recommendation
+than "180-300" in the tool description should be re-evaluated
+when the next batch of live runs accumulates.
+
+The framing prompt is untouched. The default panel composition
+is untouched. The behavior change is bounded to "the maximum
+the orchestrator can request."
 
 ---
 
