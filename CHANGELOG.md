@@ -7,6 +7,38 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-29
+
+### Changed (no orchestrator-visible behavior change)
+
+- **`mcp` SDK requirement moved from `>=0.9,<2` to `>=2,<3`** in both
+  `pyproject.toml` and `mcpb/pyproject.toml`. Closes the second
+  follow-up recorded in 0.5.0. A fresh Claude Desktop install now
+  resolves a 2.x SDK and starts.
+- **Server ported to the mcp 2.x low-level API.** `build_server()`
+  passes `on_list_tools` / `on_call_tool` handlers to `Server(...)`
+  instead of the removed decorators; handlers take `(ctx, params)`
+  and return `ListToolsResult` / `CallToolResult`. The `validate_input=
+  False` workaround for Claude Code's JSON-string-of-array shape is
+  gone because 2.x performs no jsonschema validation of tool
+  arguments; `RoundInput` remains the contract and still coerces
+  that shape (integration test unchanged). An exception escaping
+  the handler is returned as a `CallToolResult` with `is_error=True`
+  and logged — the same shape the 1.x decorator produced (the text
+  now carries the exception class name) — instead of the 2.x
+  default of a JSON-RPC error that makes the client raise.
+  `serverInfo.name` / `.version`, the tool name, description, and
+  input schema on the wire are unchanged.
+
+### Fixed
+
+- Integration tests read `result.is_error` (2.x field name) instead
+  of `result.isError`.
+- Comments on the runtime `httpx>=0.27` pin corrected: nothing in
+  `roundtable/` imports it (openai>=3 uses httpx2); it is kept for
+  google-genai's transport and the respx-based google tests.
+
+
 ## [0.5.1] — 2026-09-29
 
 ### Changed (no orchestrator-visible behavior change)

@@ -52,8 +52,8 @@ async def test_server_info_reports_package_version() -> None:
         async with ClientSession(read, write) as session:
             init_result = await session.initialize()
 
-    assert init_result.serverInfo.name == "roundtable"
-    assert init_result.serverInfo.version == __version__
+    assert init_result.server_info.name == "roundtable"
+    assert init_result.server_info.version == __version__
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,7 @@ async def test_round_zero_end_to_end() -> None:
                 },
             )
 
-    assert not result.isError
+    assert not result.is_error
     assert len(result.content) == 1
     payload = json.loads(result.content[0].text)
 
@@ -178,7 +178,7 @@ async def test_round_one_plus_with_prior_answers() -> None:
                 },
             )
 
-    assert not result.isError
+    assert not result.is_error
     payload = json.loads(result.content[0].text)
     assert payload["round"] == 1
 
@@ -216,18 +216,18 @@ async def test_invalid_input_does_not_crash_connection() -> None:
             )
             # The handler returns a TextContent JSON payload with
             # {"error": "invalid_input", "detail": [...]} on a
-            # Pydantic rejection. isError stays False because the
+            # Pydantic rejection. is_error stays False because the
             # call itself succeeded — the response just reports the
             # bad input. The invariant we care about is that the
             # connection survives.
-            assert bad.isError or "invalid_input" in bad.content[0].text
+            assert bad.is_error or "invalid_input" in bad.content[0].text
 
             good = await session.call_tool(
                 "roundtable_round",
                 {"prompt": "ok", "models": ["fake-a"]},
             )
 
-    assert not good.isError
+    assert not good.is_error
     payload = json.loads(good.content[0].text)
     assert payload["responses"][0]["error"] is None
 
@@ -297,8 +297,8 @@ async def test_prior_failures_round_trip_through_mcp() -> None:
                 },
             )
 
-    assert not round_zero.isError
-    assert not with_failures.isError
+    assert not round_zero.is_error
+    assert not with_failures.is_error
 
     raw_payload = json.loads(round_zero.content[0].text)
     framed_payload = json.loads(with_failures.content[0].text)
@@ -392,7 +392,7 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
                 },
             )
 
-    assert not result.isError
+    assert not result.is_error
     payload = json.loads(result.content[0].text)
 
     by_name = {r["model"]: r for r in payload["responses"]}
@@ -418,3 +418,29 @@ async def test_unknown_model_returns_error_stub_not_silent_fake() -> None:
         "gpt-9": "unknown_model",
         "gemini-99-ultra": "unknown_model",
     }
+
+
+@pytest.mark.asyncio
+async def test_handler_exception_returns_is_error_result_not_protocol_error() -> None:
+    """mcp 2.x turns an exception escaping a tool handler into a
+    JSON-RPC error, which makes the client raise. Roundtable keeps
+    the 1.x shape instead: the orchestrator gets a CallToolResult
+    with is_error=True and the exception text, and the connection
+    stays usable for the next call."""
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "roundtable"],
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            bad = await session.call_tool("no_such_tool", {})
+            good = await session.call_tool(
+                "roundtable_round",
+                {"prompt": "ping", "models": ["fake-a"]},
+            )
+
+    assert bad.is_error
+    assert "unknown tool" in bad.content[0].text
+    assert not good.is_error
+    assert json.loads(good.content[0].text)["resolved_models"] == ["fake-a"]
