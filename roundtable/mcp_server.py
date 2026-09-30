@@ -23,7 +23,7 @@ import os
 from typing import Any
 
 from mcp import types
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
 from pydantic import ValidationError
 
@@ -390,131 +390,145 @@ def _resolve_panel(models: list[str] | None) -> list[Provider | _UnknownModel]:
     return panel
 
 
-def build_server() -> Server:
+async def _list_tools(
+    ctx: ServerRequestContext[Any],
+    params: types.PaginatedRequestParams | None,
+) -> types.ListToolsResult:
+    return types.ListToolsResult(
+        tools=[
+            types.Tool(
+                name="roundtable_round",
+                description=TOOL_DESCRIPTION,
+                input_schema=INPUT_SCHEMA,
+            )
+        ]
+    )
+
+
+async def _call_tool(
+    ctx: ServerRequestContext[Any],
+    params: types.CallToolRequestParams,
+) -> types.CallToolResult:
+    # mcp>=2 performs no jsonschema validation of tool arguments
+    # (the 1.x call_tool decorator did, and we had to disable it to
+    # see the JSON-string-of-array shape that Claude Code sends for
+    # array parameters). The Pydantic RoundInput validator is the
+    # contract either way, and it is what coerces that shape.
+    #
+    # Under mcp 1.x an exception escaping the handler became a
+    # CallToolResult with isError=True; under 2.x it becomes a
+    # JSON-RPC error and the client raises. Keep the 1.x shape so
+    # the orchestrator sees a tool result, not a protocol error.
+    try:
+        return await _round_tool(params.name, params.arguments)
+    except Exception as e:  # noqa: BLE001
+        log.exception("roundtable_round handler raised")
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=f"{type(e).__name__}: {e}")],
+            is_error=True,
+        )
+
+
+def _text_result(payload: str) -> types.CallToolResult:
+    return types.CallToolResult(content=[types.TextContent(type="text", text=payload)])
+
+
+async def _round_tool(name: str, arguments: dict[str, Any] | None) -> types.CallToolResult:
+    if name != "roundtable_round":
+        raise ValueError(f"unknown tool: {name!r}")
+
+    try:
+        inputs = RoundInput.model_validate(arguments or {})
+    except ValidationError as e:
+        # Pydantic's error objects can carry the original
+        # exception in `ctx`, which json.dumps can't serialize.
+        # include_url/include_context off keeps the payload to
+        # plain primitives.
+        detail = e.errors(include_url=False, include_context=False)
+        return _text_result(json.dumps({"error": "invalid_input", "detail": detail}))
+
+    resolved = _resolve_panel(inputs.models)
+    providers: list[Provider] = [
+        p for p in resolved if not isinstance(p, _UnknownModel)
+    ]
+    if providers:
+        dispatched = await dispatch(inputs, providers)
+    else:
+        # All entries were unknown-model sentinels. (As of v0.4,
+        # models=[] is rejected by RoundInput so we never get
+        # here on an empty array — only on an all-unknown panel.)
+        # Skip dispatch; emit a zero-cost, zero-elapsed
+        # RoundOutput shell that the merge below fills with
+        # error stubs. resolved_models is rewritten below to use
+        # the full caller-order list.
+        current_round = inputs.round if inputs.round is not None else 0
+        dispatched = RoundOutput(
+            round=current_round,
+            responses=[],
+            errors=[],
+            resolved_models=[],
+            total_elapsed_seconds=0.0,
+            total_cost_usd=0.0,
+        )
+
+    # Weave unknown-model error stubs back into the response in
+    # the caller's original order so the response list is
+    # positionally aligned with inputs.models.
+    dispatched_by_name = {r.model: r for r in dispatched.responses}
+    merged_responses: list[ModelResponse] = []
+    merged_errors: list[ModelError] = list(dispatched.errors)
+    for slot in resolved:
+        if isinstance(slot, _UnknownModel):
+            merged_responses.append(
+                ModelResponse(
+                    model=slot.name,
+                    answer=None,
+                    elapsed_seconds=0.0,
+                    estimated_cost_usd=None,
+                    error=ErrorClass.UNKNOWN_MODEL,
+                    error_detail=(
+                        f"model {slot.name!r} is not in the panel "
+                        "registry; supported: "
+                        f"{sorted(_REAL_PROVIDER_MODELS)}"
+                    ),
+                )
+            )
+            merged_errors.append(
+                ModelError(
+                    model=slot.name,
+                    error=ErrorClass.UNKNOWN_MODEL,
+                )
+            )
+        else:
+            merged_responses.append(dispatched_by_name[slot.name])
+
+    # resolved_models echoes the full caller-order list (real
+    # providers, fake-* fixtures, and unknown_model sentinels)
+    # so the orchestrator can compare what dispatched against
+    # what it intended without reading its own outgoing
+    # tool-call JSON. This is the v0.4 diagnostic feature.
+    output = RoundOutput(
+        round=dispatched.round,
+        responses=merged_responses,
+        errors=merged_errors,
+        resolved_models=[slot.name for slot in resolved],
+        total_elapsed_seconds=dispatched.total_elapsed_seconds,
+        total_cost_usd=dispatched.total_cost_usd,
+    )
+    return _text_result(output.model_dump_json())
+
+
+def build_server() -> Server[Any]:
     # Passing version= populates serverInfo.version in the MCP
     # initialize response. Without it the SDK fills in its own
     # version, which makes "is the new bundle loaded?" hard to
     # answer from Claude Desktop's logs.
-    server: Server = Server("roundtable", version=__version__)
-
-    @server.list_tools()
-    async def _list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name="roundtable_round",
-                description=TOOL_DESCRIPTION,
-                inputSchema=INPUT_SCHEMA,
-            )
-        ]
-
-    # validate_input=False: the MCP SDK's jsonschema validation
-    # runs before _call_tool and rejects the JSON-string-of-array
-    # shape that Claude Code (claude-ai/0.1.0, protocol
-    # 2025-11-25) sends for array parameters. We need to see the
-    # raw string to coerce it; the Pydantic RoundInput validator
-    # then enforces the public contract. The SDK-level check
-    # would be redundant either way — every shape it would
-    # reject is also rejected by RoundInput.
-    @server.call_tool(validate_input=False)
-    async def _call_tool(
-        name: str, arguments: dict[str, Any] | None
-    ) -> list[types.TextContent]:
-        if name != "roundtable_round":
-            raise ValueError(f"unknown tool: {name!r}")
-
-        try:
-            inputs = RoundInput.model_validate(arguments or {})
-        except ValidationError as e:
-            # Pydantic's error objects can carry the original
-            # exception in `ctx`, which json.dumps can't serialize.
-            # include_url/include_context off keeps the payload to
-            # plain primitives.
-            detail = e.errors(include_url=False, include_context=False)
-            return [
-                types.TextContent(
-                    type="text",
-                    text=json.dumps(
-                        {"error": "invalid_input", "detail": detail},
-                    ),
-                )
-            ]
-
-        resolved = _resolve_panel(inputs.models)
-        providers: list[Provider] = [
-            p for p in resolved if not isinstance(p, _UnknownModel)
-        ]
-        if providers:
-            dispatched = await dispatch(inputs, providers)
-        else:
-            # All entries were unknown-model sentinels. (As of v0.4,
-            # models=[] is rejected by RoundInput so we never get
-            # here on an empty array — only on an all-unknown panel.)
-            # Skip dispatch; emit a zero-cost, zero-elapsed
-            # RoundOutput shell that the merge below fills with
-            # error stubs. resolved_models is rewritten below to use
-            # the full caller-order list.
-            current_round = inputs.round if inputs.round is not None else 0
-            dispatched = RoundOutput(
-                round=current_round,
-                responses=[],
-                errors=[],
-                resolved_models=[],
-                total_elapsed_seconds=0.0,
-                total_cost_usd=0.0,
-            )
-
-        # Weave unknown-model error stubs back into the response in
-        # the caller's original order so the response list is
-        # positionally aligned with inputs.models.
-        dispatched_by_name = {r.model: r for r in dispatched.responses}
-        merged_responses: list[ModelResponse] = []
-        merged_errors: list[ModelError] = list(dispatched.errors)
-        for slot in resolved:
-            if isinstance(slot, _UnknownModel):
-                merged_responses.append(
-                    ModelResponse(
-                        model=slot.name,
-                        answer=None,
-                        elapsed_seconds=0.0,
-                        estimated_cost_usd=None,
-                        error=ErrorClass.UNKNOWN_MODEL,
-                        error_detail=(
-                            f"model {slot.name!r} is not in the panel "
-                            "registry; supported: "
-                            f"{sorted(_REAL_PROVIDER_MODELS)}"
-                        ),
-                    )
-                )
-                merged_errors.append(
-                    ModelError(
-                        model=slot.name,
-                        error=ErrorClass.UNKNOWN_MODEL,
-                    )
-                )
-            else:
-                merged_responses.append(dispatched_by_name[slot.name])
-
-        # resolved_models echoes the full caller-order list (real
-        # providers, fake-* fixtures, and unknown_model sentinels)
-        # so the orchestrator can compare what dispatched against
-        # what it intended without reading its own outgoing
-        # tool-call JSON. This is the v0.4 diagnostic feature.
-        output = RoundOutput(
-            round=dispatched.round,
-            responses=merged_responses,
-            errors=merged_errors,
-            resolved_models=[slot.name for slot in resolved],
-            total_elapsed_seconds=dispatched.total_elapsed_seconds,
-            total_cost_usd=dispatched.total_cost_usd,
-        )
-        return [
-            types.TextContent(
-                type="text",
-                text=output.model_dump_json(),
-            )
-        ]
-
-    return server
+    return Server(
+        "roundtable",
+        version=__version__,
+        on_list_tools=_list_tools,
+        on_call_tool=_call_tool,
+    )
 
 
 async def _serve() -> None:
