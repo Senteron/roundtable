@@ -23,21 +23,36 @@ from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# DeepSeek public pricing, USD per 1M tokens (cache-miss tier).
-# https://api-docs.deepseek.com/quick_start/pricing
-# Both `deepseek-chat` (non-thinking) and `deepseek-reasoner`
-# (thinking) now alias `deepseek-v4-flash` and share identical
-# pricing and 1M context, per the May 2026 consolidation. The
-# legacy names are scheduled for sunset 2026-07-24.
+# DeepSeek public pricing, USD per 1M tokens (cache-miss tier,
+# PEAK rate). https://api-docs.deepseek.com/quick_start/pricing
+# Since 2026-08-16 DeepSeek bills peak/off-peak (off-peak is half
+# price, 01:00-04:00 and 06:00-10:00 UTC weekdays); we use the peak
+# rate so the estimate is an upper bound.
+# As of 2026-09 the documented model names are `deepseek-flash`
+# (DeepSeek-V4.1-Flash) and `deepseek-v4-pro` (DeepSeek-V4-Pro), and
+# both default to thinking mode. The legacy `deepseek-chat`
+# (non-thinking) / `deepseek-reasoner` (thinking) aliases are no
+# longer listed by the /models endpoint but still answer; responses
+# report `model: "deepseek-flash"`, so they are billed at the Flash
+# rate and priced identically here. `deepseek-chat` stays the
+# default because it is the only name that selects non-thinking
+# mode, which is what the v0.1 validation lineup ran (measured
+# 2026-09-29: same prompt, 0 reasoning tokens via `deepseek-chat`
+# vs 78 via `deepseek-flash`; see docs/decisions.md §17.4).
 _PRICING: dict[str, tuple[float, float]] = {
-    "deepseek-chat": (0.14, 0.28),
-    "deepseek-reasoner": (0.14, 0.28),
+    "deepseek-chat": (0.30, 1.20),
+    "deepseek-reasoner": (0.30, 1.20),
+    "deepseek-flash": (0.30, 1.20),
+    "deepseek-v4-pro": (1.32, 3.96),
 }
 
-# Per-model max input/context window in tokens.
+# Per-model max input/context window in tokens, as reported by the
+# /models endpoint (`context_window`).
 _CONTEXT_WINDOWS: dict[str, int] = {
-    "deepseek-chat": 1_000_000,
-    "deepseek-reasoner": 1_000_000,
+    "deepseek-chat": 1_048_576,
+    "deepseek-reasoner": 1_048_576,
+    "deepseek-flash": 1_048_576,
+    "deepseek-v4-pro": 1_048_576,
 }
 
 DEFAULT_MODEL = "deepseek-chat"

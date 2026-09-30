@@ -164,8 +164,14 @@ def test_mixed_known_unknown_and_fake_preserves_order(
         ("gpt-5", "OPENAI_API_KEY"),
         ("gpt-5.1", "OPENAI_API_KEY"),
         ("gpt-5.5", "OPENAI_API_KEY"),
+        ("gpt-5.6-sol", "OPENAI_API_KEY"),
+        ("gpt-6-astra", "OPENAI_API_KEY"),
+        ("gpt-6.1-sol", "OPENAI_API_KEY"),
+        ("gpt-6-luna", "OPENAI_API_KEY"),
         ("gemini-3.1-pro-preview", "GOOGLE_API_KEY"),
         ("deepseek-reasoner", "DEEPSEEK_API_KEY"),
+        ("deepseek-flash", "DEEPSEEK_API_KEY"),
+        ("deepseek-v4-pro", "DEEPSEEK_API_KEY"),
     ],
 )
 def test_new_registry_models_resolve_to_real_provider_when_key_set(
@@ -173,8 +179,8 @@ def test_new_registry_models_resolve_to_real_provider_when_key_set(
     model: str,
     env_key: str,
 ) -> None:
-    """v0.3.0 registry widening: each newly-added model name must
-    route to its real provider when the matching env var is set, and
+    """v0.3.0 / v0.5.0 registry widening: each non-default model name
+    must route to its real provider when the matching env var is set, and
     must NOT route to FakeProvider or _UnknownModel.
     """
     _strip_provider_keys(monkeypatch)
@@ -194,8 +200,14 @@ def test_new_registry_models_resolve_to_real_provider_when_key_set(
         ("gpt-5", "OPENAI_API_KEY"),
         ("gpt-5.1", "OPENAI_API_KEY"),
         ("gpt-5.5", "OPENAI_API_KEY"),
+        ("gpt-5.6-sol", "OPENAI_API_KEY"),
+        ("gpt-6-astra", "OPENAI_API_KEY"),
+        ("gpt-6.1-sol", "OPENAI_API_KEY"),
+        ("gpt-6-luna", "OPENAI_API_KEY"),
         ("gemini-3.1-pro-preview", "GOOGLE_API_KEY"),
         ("deepseek-reasoner", "DEEPSEEK_API_KEY"),
+        ("deepseek-flash", "DEEPSEEK_API_KEY"),
+        ("deepseek-v4-pro", "DEEPSEEK_API_KEY"),
     ],
 )
 def test_new_registry_models_fall_back_to_fake_when_key_missing(

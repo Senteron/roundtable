@@ -21,7 +21,7 @@ def _sample_payload(text: str = "hello world") -> dict:
         "id": "deepseek-test",
         "object": "chat.completion",
         "created": 1700000000,
-        "model": "deepseek-chat",
+        "model": "deepseek-flash",
         "choices": [
             {
                 "index": 0,
@@ -47,7 +47,7 @@ def test_constructor_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake")
     p = DeepSeekProvider()
     assert p.name == "deepseek-chat"
-    assert p.context_window_tokens == 1_000_000
+    assert p.context_window_tokens == 1_048_576
 
 
 @pytest.mark.asyncio
@@ -120,10 +120,19 @@ def test_cost_is_none_for_unknown_model() -> None:
     assert _estimate_cost_usd("not-a-real-model", 100, 50) is None
 
 
-@pytest.mark.parametrize("model", ["deepseek-chat", "deepseek-reasoner"])
-def test_cost_is_known_for_listed_model(model: str) -> None:
-    # Per the May 2026 DeepSeek consolidation onto deepseek-v4-flash:
-    # both legacy names share the cache-miss tier of 0.14 input /
-    # 0.28 output per 1M tokens.
-    assert _estimate_cost_usd(model, 1_000_000, 0) == pytest.approx(0.14)
-    assert _estimate_cost_usd(model, 0, 1_000_000) == pytest.approx(0.28)
+@pytest.mark.parametrize(
+    "model,expected_input,expected_output",
+    [
+        # Peak-rate, cache-miss tier (Sept 2026). The legacy aliases
+        # are served by deepseek-flash and billed at the Flash rate.
+        ("deepseek-chat", 0.30, 1.20),
+        ("deepseek-reasoner", 0.30, 1.20),
+        ("deepseek-flash", 0.30, 1.20),
+        ("deepseek-v4-pro", 1.32, 3.96),
+    ],
+)
+def test_cost_is_known_for_listed_model(
+    model: str, expected_input: float, expected_output: float
+) -> None:
+    assert _estimate_cost_usd(model, 1_000_000, 0) == pytest.approx(expected_input)
+    assert _estimate_cost_usd(model, 0, 1_000_000) == pytest.approx(expected_output)

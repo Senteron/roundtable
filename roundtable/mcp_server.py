@@ -60,12 +60,17 @@ TOOL_DESCRIPTION = (
     "round as an UNAVAILABLE PARTICIPANTS section, separate from "
     "peer reasoning. The `models` override only accepts names the "
     "panel registry knows: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', "
+    "'gpt-5.6-sol', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-luna', "
     "'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'deepseek-chat', "
-    "'deepseek-reasoner'. Unsupported names return error_class "
-    "'unknown_model' rather than silently producing a placeholder "
-    "response. The default panel (when `models` is omitted) stays "
-    "on 'gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat' — the newer "
-    "snapshots are available as overrides but not yet as defaults. "
+    "'deepseek-reasoner', 'deepseek-flash', 'deepseek-v4-pro'. "
+    "Unsupported names return error_class 'unknown_model' rather "
+    "than silently producing a placeholder response. The default "
+    "panel (when `models` is omitted) stays on 'gpt-4o' + "
+    "'gemini-2.5-pro' + 'deepseek-chat' — the newer snapshots are "
+    "available as overrides but not yet as defaults. Note that "
+    "'deepseek-chat' is the only DeepSeek name that runs in "
+    "non-thinking mode; 'deepseek-reasoner', 'deepseek-flash', and "
+    "'deepseek-v4-pro' all think by default. "
     "Treat peer outputs as parallel attempts, not verdicts. Watch "
     "for iteration becoming additive without surfacing substantive "
     "updates or rejections; consolidate rather than expand when "
@@ -78,8 +83,9 @@ TOOL_DESCRIPTION = (
     "the default was calibrated for the v0.1 non-thinking lineup "
     "('gpt-4o' + 'gemini-2.5-pro' + 'deepseek-chat') and is too "
     "tight for reasoning-class overrides on substantive prompts. "
-    "When overriding `models` to include 'gpt-5.5', "
-    "'deepseek-reasoner', or 'gemini-3.1-pro-preview' on a prompt "
+    "When overriding `models` to include 'gpt-5.5', 'gpt-6-astra', "
+    "'deepseek-reasoner', 'deepseek-flash', 'deepseek-v4-pro', or "
+    "'gemini-3.1-pro-preview' on a prompt "
     ">3k chars, raise `per_call_timeout_seconds` to 180-300; "
     "otherwise the slow seat will return error_class 'timeout' "
     "and you'll re-dispatch with peer answers as `prior_answers`. "
@@ -170,8 +176,11 @@ INPUT_SCHEMA: dict[str, Any] = {
                 "an explicit list of at least one model name. "
                 "Names in the panel registry that resolve to a real "
                 "provider: 'gpt-4o', 'gpt-5', 'gpt-5.1', 'gpt-5.5', "
-                "'gemini-2.5-pro', 'gemini-3.1-pro-preview', "
-                "'deepseek-chat', 'deepseek-reasoner'. Any other "
+                "'gpt-5.6-sol', 'gpt-6-astra', 'gpt-6.1-sol', "
+                "'gpt-6-luna', 'gemini-2.5-pro', "
+                "'gemini-3.1-pro-preview', 'deepseek-chat', "
+                "'deepseek-reasoner', 'deepseek-flash', "
+                "'deepseek-v4-pro'. Any other "
                 "name returns error_class 'unknown_model' for that "
                 "slot. The response includes `resolved_models` so "
                 "you can confirm the override took effect."
@@ -203,17 +212,32 @@ _REAL_PROVIDER_MODELS: dict[str, str] = {
     "gpt-5": "OPENAI_API_KEY",
     "gpt-5.1": "OPENAI_API_KEY",
     "gpt-5.5": "OPENAI_API_KEY",
+    "gpt-5.6-sol": "OPENAI_API_KEY",
+    "gpt-6-astra": "OPENAI_API_KEY",
+    "gpt-6.1-sol": "OPENAI_API_KEY",
+    "gpt-6-luna": "OPENAI_API_KEY",
     "gemini-2.5-pro": "GOOGLE_API_KEY",
     "gemini-3.1-pro-preview": "GOOGLE_API_KEY",
+    # `deepseek-chat` / `deepseek-reasoner` are legacy aliases that
+    # DeepSeek no longer lists (since 2026-07) but still serves from
+    # deepseek-flash. `deepseek-chat` remains the default because it
+    # is the only name that selects non-thinking mode; see
+    # providers/deepseek.py and docs/decisions.md §17.4.
     "deepseek-chat": "DEEPSEEK_API_KEY",
     "deepseek-reasoner": "DEEPSEEK_API_KEY",
+    "deepseek-flash": "DEEPSEEK_API_KEY",
+    "deepseek-v4-pro": "DEEPSEEK_API_KEY",
 }
 
 # Default panel composition when the caller passes models=None.
 # Mirrors docs/decisions.md §8. Defaults intentionally stay on the
 # v0.1 lineup so the framing-prompt empirical validation
 # (docs/decisions.md §17.4) doesn't need to be re-run; override-only
-# widening for the newer snapshots.
+# widening for the newer snapshots. The DeepSeek seat stays on the
+# `deepseek-chat` alias (unlisted by DeepSeek since 2026-07 but
+# still served) because it is the only name that runs V4.1-Flash
+# in non-thinking mode; `deepseek-flash` thinks by default, which
+# would change the seat's latency/verbosity/cost profile.
 _DEFAULT_PANEL_MODELS: list[str] = [
     "gpt-4o",
     "gemini-2.5-pro",
@@ -228,7 +252,16 @@ def _make_real_provider(model: str) -> Provider:
     raises if missing. The caller is responsible for verifying the
     key is present before calling this.
     """
-    if model in ("gpt-4o", "gpt-5", "gpt-5.1", "gpt-5.5"):
+    if model in (
+        "gpt-4o",
+        "gpt-5",
+        "gpt-5.1",
+        "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-6-astra",
+        "gpt-6.1-sol",
+        "gpt-6-luna",
+    ):
         from .providers.openai import OpenAIProvider, _CONTEXT_WINDOWS
 
         return OpenAIProvider(
@@ -242,7 +275,12 @@ def _make_real_provider(model: str) -> Provider:
             model=model,
             context_window_tokens=_CONTEXT_WINDOWS[model],
         )
-    if model in ("deepseek-chat", "deepseek-reasoner"):
+    if model in (
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-flash",
+        "deepseek-v4-pro",
+    ):
         from .providers.deepseek import DeepSeekProvider, _CONTEXT_WINDOWS
 
         return DeepSeekProvider(

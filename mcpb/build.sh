@@ -44,8 +44,9 @@ echo "Staging bundle in $BUILD"
 cp -R "$PKG"             "$BUILD/roundtable"
 cp "$SRC/pyproject.toml" "$BUILD/"
 
-# Strip __pycache__ that may have been created by tests.
-find "$BUILD" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+# Strip tool caches (__pycache__, .mypy_cache, ...) that may have been
+# created by tests or type-checkers run inside the package dir.
+find "$BUILD" \( -name "__pycache__" -o -name ".mypy_cache" -o -name ".pytest_cache" -o -name ".ruff_cache" \) -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 # Inject TOOL_DESCRIPTION from the Python source into the staged
 # manifest. The Python source is the source of truth; the committed
