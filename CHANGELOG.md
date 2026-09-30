@@ -66,6 +66,11 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `__pycache__`. A stray `roundtable/.mypy_cache/` left by a local
   type-check run was copied into the first 0.5.0 build attempt and
   inflated the bundle from ~30 KB to ~9 MB before it was caught.
+- **Ruff rule set pinned explicitly** (`[tool.ruff.lint] select`)
+  to the `E4`/`E7`/`E9`/`F` defaults the project has always linted
+  under. ruff 0.16 widened its default selection, and because
+  `uv.lock` is gitignored CI resolves the newest ruff, so the lint
+  step started failing on unchanged code. No code changes.
 
 ### Notes
 
