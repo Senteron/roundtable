@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roundtable"
-version = "0.5.0"
+version = "0.5.1"
 description = "MCP tool for multi-model deliberation. Claude consults a panel of other models, refines its own answer through iterative critique."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -25,12 +25,12 @@ classifiers = [
 dependencies = [
     # Provider clients
     "anthropic>=0.40",
-    # <3: openai 3.0 (2026-08-12) moved its transport from httpx to
-    # httpx2, which the respx-based unit tests cannot intercept, so
-    # they escape to the live API. Lift the cap once the provider
-    # tests are ported to an httpx2-aware mock (tracked in CHANGELOG
-    # 0.5.0 Notes).
-    "openai>=1.50,<3",
+    # >=3: from 3.0 the SDK transport is httpx2, and the provider unit
+    # tests inject an httpx2 mock through the `http_client=` seam, so
+    # a 2.x client would not be what the tests exercise.
+    # <4: 3.0 swapped the transport under us; take the next major
+    # deliberately rather than on a fresh resolve.
+    "openai>=3,<4",
     "google-genai>=0.3",
     # MCP server
     # <2: mcp 2.0 removed the low-level `Server.list_tools()` /
@@ -49,6 +49,9 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
+    # Direct import in tests/unit/test_providers (mock transport for
+    # the openai SDK); also a transitive dep of openai>=3.
+    "httpx2>=2.7",
     "ruff>=0.5",
     "mypy>=1.10",
 ]

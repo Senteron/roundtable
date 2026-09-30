@@ -1,14 +1,15 @@
 """Unit tests for OpenAIProvider.
 
-Mocks the OpenAI Chat Completions HTTP endpoint with `respx`. No
-network calls. No real API key required.
+Mocks the Chat Completions HTTP endpoint with an `httpx2.MockTransport`
+injected through the provider's `http_client=` seam (see conftest.py).
+No network calls. No real API key required.
 """
 
 from __future__ import annotations
 
-import httpx
+import httpx2
+import openai
 import pytest
-import respx
 
 from roundtable.providers.base import ProviderResponse
 from roundtable.providers.openai import OpenAIProvider, _estimate_cost_usd
@@ -51,14 +52,19 @@ def test_constructor_reads_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_successful_call_populates_response() -> None:
-    provider = OpenAIProvider(api_key="sk-fake")
-    with respx.mock(assert_all_called=True) as mock:
-        mock.post(CHAT_URL).mock(
-            return_value=httpx.Response(200, json=_sample_payload("hi from gpt-4o"))
-        )
-        resp = await provider.call("hello", timeout_seconds=5.0)
+async def test_successful_call_populates_response(mock_endpoint) -> None:
+    endpoint = mock_endpoint(
+        httpx2.Response(200, json=_sample_payload("hi from gpt-4o"))
+    )
+    provider = OpenAIProvider(api_key="sk-fake", http_client=endpoint.client())
+    resp = await provider.call("hello", timeout_seconds=5.0)
 
+    assert endpoint.call_count == 1
+    assert str(endpoint.requests[0].url) == CHAT_URL
+    assert endpoint.requests[0].method == "POST"
+    # The per-call timeout must reach the transport even though the
+    # client was supplied by the caller.
+    assert endpoint.requests[0].extensions["timeout"]["read"] == 5.0
     assert isinstance(resp, ProviderResponse)
     assert resp.text == "hi from gpt-4o"
     assert resp.prompt_tokens == 12
@@ -69,47 +75,45 @@ async def test_successful_call_populates_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_http_error_propagates() -> None:
-    provider = OpenAIProvider(api_key="sk-fake")
-    with respx.mock() as mock:
-        mock.post(CHAT_URL).mock(
-            return_value=httpx.Response(500, json={"error": {"message": "boom"}})
-        )
-        with pytest.raises(Exception):
-            await provider.call("hello", timeout_seconds=5.0)
+async def test_http_error_propagates(mock_endpoint) -> None:
+    endpoint = mock_endpoint(
+        httpx2.Response(500, json={"error": {"message": "boom"}})
+    )
+    provider = OpenAIProvider(api_key="sk-fake", http_client=endpoint.client())
+    with pytest.raises(openai.InternalServerError):
+        await provider.call("hello", timeout_seconds=5.0)
 
 
 @pytest.mark.asyncio
-async def test_timeout_propagates() -> None:
-    """SDK timeout enforcement: respx raises ReadTimeout, SDK wraps it."""
-    provider = OpenAIProvider(api_key="sk-fake")
-    with respx.mock() as mock:
-        mock.post(CHAT_URL).mock(side_effect=httpx.ReadTimeout("simulated timeout"))
-        with pytest.raises(Exception):
-            await provider.call("hello", timeout_seconds=0.1)
+async def test_timeout_propagates(mock_endpoint) -> None:
+    """SDK timeout enforcement: the transport raises ReadTimeout and
+    the SDK wraps it as APITimeoutError. Note the dispatcher surfaces
+    that as `api_error` (with an APITimeoutError detail); the
+    `timeout` error class comes from the dispatcher's own
+    `asyncio.wait_for` bound at the same budget."""
+    endpoint = mock_endpoint(httpx2.ReadTimeout("simulated timeout"))
+    provider = OpenAIProvider(api_key="sk-fake", http_client=endpoint.client())
+    with pytest.raises(openai.APITimeoutError):
+        await provider.call("hello", timeout_seconds=0.1)
 
 
 @pytest.mark.asyncio
-async def test_no_retries_in_provider() -> None:
+async def test_no_retries_in_provider(mock_endpoint) -> None:
     """N-1 contract: the provider must not retry within a round."""
-    provider = OpenAIProvider(api_key="sk-fake")
-    with respx.mock() as mock:
-        route = mock.post(CHAT_URL).mock(
-            return_value=httpx.Response(500, json={"error": {"message": "boom"}})
-        )
-        with pytest.raises(Exception):
-            await provider.call("hello", timeout_seconds=5.0)
-        assert route.call_count == 1
+    endpoint = mock_endpoint(
+        httpx2.Response(500, json={"error": {"message": "boom"}})
+    )
+    provider = OpenAIProvider(api_key="sk-fake", http_client=endpoint.client())
+    with pytest.raises(openai.InternalServerError):
+        await provider.call("hello", timeout_seconds=5.0)
+    assert endpoint.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_cost_estimate_positive_for_nonzero_tokens() -> None:
-    provider = OpenAIProvider(api_key="sk-fake")
-    with respx.mock() as mock:
-        mock.post(CHAT_URL).mock(
-            return_value=httpx.Response(200, json=_sample_payload("ok"))
-        )
-        resp = await provider.call("hello", timeout_seconds=5.0)
+async def test_cost_estimate_positive_for_nonzero_tokens(mock_endpoint) -> None:
+    endpoint = mock_endpoint(httpx2.Response(200, json=_sample_payload("ok")))
+    provider = OpenAIProvider(api_key="sk-fake", http_client=endpoint.client())
+    resp = await provider.call("hello", timeout_seconds=5.0)
 
     assert resp.estimated_cost_usd is not None
     assert resp.estimated_cost_usd > 0

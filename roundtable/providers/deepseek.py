@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import os
 import time
+from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
+
+if TYPE_CHECKING:
+    import httpx2
 
 # DeepSeek public pricing, USD per 1M tokens (cache-miss tier,
 # PEAK rate). https://api-docs.deepseek.com/quick_start/pricing
@@ -72,6 +76,7 @@ class DeepSeekProvider:
         context_window_tokens: int = CONTEXT_WINDOW_TOKENS,
         api_key: str | None = None,
         base_url: str = DEEPSEEK_BASE_URL,
+        http_client: httpx2.AsyncClient | None = None,
     ) -> None:
         key = api_key if api_key is not None else os.environ.get(_ENV_KEY)
         if not key:
@@ -90,7 +95,16 @@ class DeepSeekProvider:
         self.context_window_tokens = context_window_tokens
         # max_retries=0: the dispatcher owns retry policy (N-1 tolerance:
         # the next round re-attempts naturally; no retry inside a round).
-        self._client = AsyncOpenAI(api_key=key, base_url=base_url, max_retries=0)
+        # http_client: an optional pre-built httpx2.AsyncClient. Tests
+        # inject one with an httpx2.MockTransport so no request leaves
+        # the process; production leaves it None and the SDK builds
+        # its own. Per-request `timeout=` still applies either way.
+        self._client = AsyncOpenAI(
+            api_key=key,
+            base_url=base_url,
+            max_retries=0,
+            http_client=http_client,
+        )
 
     async def call(
         self,
