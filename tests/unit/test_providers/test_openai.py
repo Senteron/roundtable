@@ -132,6 +132,10 @@ def test_cost_is_known_for_listed_model() -> None:
         ("gpt-5", 1.25, 10.00),
         ("gpt-5.1", 1.25, 10.00),
         ("gpt-5.5", 5.00, 30.00),
+        ("gpt-5.6-sol", 4.00, 20.00),
+        ("gpt-6-astra", 10.00, 50.00),
+        ("gpt-6.1-sol", 2.00, 10.00),
+        ("gpt-6-luna", 0.10, 0.50),
     ],
 )
 def test_new_models_have_documented_prices(

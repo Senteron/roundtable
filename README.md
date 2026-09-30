@@ -3,16 +3,17 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.4.0. Real OpenAI / Google / DeepSeek dispatch when
+**Status:** v0.5.0. Real OpenAI / Google / DeepSeek dispatch when
 the corresponding API key is configured; transparent fallback to a
 placeholder `FakeProvider` (with a clear stderr warning) for any
 provider whose key is missing, so the server boots and runs even
-with no keys configured. v0.3.0 widens the panel registry: the
-default panel still runs `gpt-4o` + `gemini-2.5-pro` +
-`deepseek-chat`, but the `models` override now also accepts
-`gpt-5`, `gpt-5.1`, `gpt-5.5`, `gemini-3.1-pro-preview`, and
-`deepseek-reasoner`. The `unknown_model` error class (from v0.2.0)
-still fires for any name outside this list.
+with no keys configured. The default panel runs `gpt-4o` +
+`gemini-2.5-pro` + `deepseek-chat`; the `models` override also
+accepts `gpt-5`, `gpt-5.1`, `gpt-5.5`, `gpt-5.6-sol`, `gpt-6-astra`,
+`gpt-6.1-sol`, `gpt-6-luna`, `gemini-3.1-pro-preview`,
+`deepseek-reasoner`, `deepseek-flash`, and `deepseek-v4-pro`. The
+`unknown_model` error class (from v0.2.0) still fires for any name
+outside this list.
 
 ## What it does
 
@@ -131,13 +132,23 @@ and chose not to ship one; the reasoning is in
 
 ## What models does the panel use?
 
-The v0.1 default lineup, unchanged through v0.3:
+The v0.1 default lineup, unchanged through v0.5:
 
 | Provider | Default model | Snapshot |
 | --- | --- | --- |
 | OpenAI | `gpt-4o` | May 2024 (pinned) |
 | Google | `gemini-2.5-pro` | March 2025 (pinned) |
-| DeepSeek | `deepseek-chat` | Alias; now backs onto `deepseek-v4-flash` |
+| DeepSeek | `deepseek-chat` | Legacy alias; served by DeepSeek-V4.1-Flash in non-thinking mode |
+
+The `deepseek-chat` name has been absent from DeepSeek's model
+listing since July 2026 but still answers, and it is the only
+DeepSeek name that runs without thinking. The documented names
+(`deepseek-flash`, `deepseek-v4-pro`) think by default, so
+switching the default to one of them would change the seat's
+latency, verbosity, and cost, and needs the re-validation described
+in [docs/decisions.md §17.4](docs/decisions.md). If DeepSeek drops
+the alias, the seat will start returning `api_error` and a patch
+release will move it.
 
 **Why not the latest?** The defaults are pinned to the lineup that
 the project's empirical evidence is calibrated against — the corpus
@@ -159,22 +170,32 @@ roundtable_round(
 
 roundtable_round(
     prompt="...",
-    models=["gpt-5.1", "gemini-3.1-pro-preview", "deepseek-reasoner"],
+    models=["gpt-6.1-sol", "gemini-3.1-pro-preview", "deepseek-v4-pro"],
 )
 ```
 
-As of v0.3.0, the override registry is:
+As of v0.5.0, the override registry is:
 
 | API model string | Routes via | Notes |
 | --- | --- | --- |
 | `gpt-4o` | OpenAI | Default |
-| `gpt-5` | OpenAI | 400K context |
+| `gpt-5` | OpenAI | 400K context; OpenAI shuts down the underlying snapshot 2026-12-11 (use `gpt-5.6-sol`) |
 | `gpt-5.1` | OpenAI | 400K context |
 | `gpt-5.5` | OpenAI | 1.05M context; >272K inputs cost 2×/1.5× |
+| `gpt-5.6-sol` | OpenAI | 1.05M context; same >272K surcharge |
+| `gpt-6-astra` | OpenAI | 1.05M context; frontier tier ($10/$50 per 1M); same >272K surcharge |
+| `gpt-6.1-sol` | OpenAI | 1.05M context; same >272K surcharge |
+| `gpt-6-luna` | OpenAI | 1.05M context; budget tier ($0.10/$0.50 per 1M) |
 | `gemini-2.5-pro` | Google | Default |
 | `gemini-3.1-pro-preview` | Google | Successor to `gemini-3-pro-preview` (shut down 2026-03-09) |
-| `deepseek-chat` | DeepSeek | Default; aliases v4-flash non-thinking |
-| `deepseek-reasoner` | DeepSeek | Aliases `deepseek-v4-flash` thinking mode |
+| `deepseek-chat` | DeepSeek | Default; legacy alias served by V4.1-Flash, non-thinking |
+| `deepseek-reasoner` | DeepSeek | Legacy alias served by V4.1-Flash, thinking |
+| `deepseek-flash` | DeepSeek | DeepSeek-V4.1-Flash, thinks by default |
+| `deepseek-v4-pro` | DeepSeek | DeepSeek-V4-Pro, thinks by default |
+
+DeepSeek bills peak/off-peak since 2026-08-16; the cost estimates
+here use the peak rate, so they are an upper bound for DeepSeek
+seats.
 
 Names outside this list still return `error_class:
 "unknown_model"` for that slot (the v0.2.0 behavior; pre-0.2.0

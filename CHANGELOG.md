@@ -7,6 +7,95 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-29
+
+### Added
+
+- **Registry refresh for the OpenAI and DeepSeek seats.** The
+  `models` override now also accepts:
+  - OpenAI: `gpt-5.6-sol` (4.00 / 20.00 USD per 1M), `gpt-6-astra`
+    (10.00 / 50.00), `gpt-6.1-sol` (2.00 / 10.00), `gpt-6-luna`
+    (0.10 / 0.50). All four have a 1.05M context window and the
+    same >272K-input surcharge rule as `gpt-5.5`; the short-context
+    base rate is what the cost estimate uses.
+  - DeepSeek: `deepseek-flash` (DeepSeek-V4.1-Flash; 0.30 / 1.20)
+    and `deepseek-v4-pro` (DeepSeek-V4-Pro; 1.32 / 3.96). These
+    are the only two names DeepSeek's `/models` endpoint lists as
+    of 2026-09.
+
+  Each new name was smoke-tested against the live Chat Completions
+  endpoint before being added. `gemini-2.5-pro` and
+  `gemini-3.1-pro-preview` are still served with no shutdown date
+  and no newer Pro-tier text model exists, so the Google seat is
+  unchanged.
+
+### Changed (orchestrator-visible)
+
+- **Default DeepSeek seat stays on `deepseek-chat`, now documented
+  as a legacy alias.** DeepSeek removed `deepseek-chat` and
+  `deepseek-reasoner` from its model listing in July 2026; both
+  still answer and report `model: "deepseek-flash"`. Renaming the
+  default to `deepseek-flash` was considered and rejected after
+  measurement: on an identical prompt `deepseek-chat` returned no
+  reasoning tokens while `deepseek-flash` returned 78 (4.5× the
+  completion tokens), i.e. the documented name thinks by default
+  and the alias does not. Moving the default would change the
+  seat's latency, verbosity, and cost profile, which
+  `docs/decisions.md §17.4` reserves for a re-validation slice. If
+  DeepSeek drops the alias, the seat will surface `api_error` and
+  a patch release will move it.
+- **DeepSeek pricing corrected** for `deepseek-chat` and
+  `deepseek-reasoner`: was 0.14 / 0.28 USD per 1M, now 0.30 / 1.20
+  (the Flash peak rate they are actually billed at). DeepSeek moved
+  to peak/off-peak billing on 2026-08-16; the tables use the peak
+  rate so `estimated_cost_usd` is an upper bound. DeepSeek context
+  windows updated to 1,048,576 as reported by `/models`.
+- **Tool description and `models` schema description** updated to
+  list the refreshed registry and the new default DeepSeek name,
+  to state that `deepseek-chat` is the only non-thinking DeepSeek
+  name, and to add `gpt-6-astra`, `deepseek-flash`, and
+  `deepseek-v4-pro` to the reasoning-class list that should run
+  with a raised `per_call_timeout_seconds`. One of the two version-bump-
+  discipline strings per `CLAUDE.md`; the framing prompt is
+  unchanged in this release.
+
+### Fixed
+
+- **`mcpb/build.sh` now strips `.mypy_cache`, `.pytest_cache`, and
+  `.ruff_cache`** from the staged package in addition to
+  `__pycache__`. A stray `roundtable/.mypy_cache/` left by a local
+  type-check run was copied into the first 0.5.0 build attempt and
+  inflated the bundle from ~30 KB to ~9 MB before it was caught.
+- **Ruff rule set pinned explicitly** (`[tool.ruff.lint] select`)
+  to the `E4`/`E7`/`E9`/`F` defaults the project has always linted
+  under. ruff 0.16 widened its default selection, and because
+  `uv.lock` is gitignored CI resolves the newest ruff, so the lint
+  step started failing on unchanged code. No code changes.
+
+- **`openai` SDK capped at `<3`** in both `pyproject.toml` and
+  `mcpb/pyproject.toml`. openai 3.0 (2026-08-12) replaced its
+  `httpx` transport with `httpx2`; the respx-based provider unit
+  tests can no longer intercept it and were observed escaping to
+  the live OpenAI and DeepSeek endpoints in CI (10 failures, all
+  401s or "route not called"). The 2.x line is what every test and
+  live smoke in this release ran against. Porting the provider
+  tests to an httpx2-aware mock and lifting the cap is a follow-up.
+- **`mcp` SDK capped at `<2`** in both `pyproject.toml` and
+  `mcpb/pyproject.toml`. mcp 2.0 removed the low-level
+  `Server.list_tools()` / `call_tool()` decorator API the server is
+  built on; on a fresh resolve the process crashes at startup with
+  `AttributeError: 'Server' object has no attribute 'list_tools'`
+  (all 11 integration tests). Because the bundle resolves its
+  dependencies at install time, this also affected any fresh Claude
+  Desktop install of 0.4.x made after mcp 2.0 shipped. Porting to
+  the 2.x API and lifting the cap is a follow-up.
+
+### Notes
+
+- `gpt-5` resolves to the `gpt-5-2025-08-07` snapshot, which OpenAI
+  has scheduled for shutdown on 2026-12-11 with `gpt-5.6-sol` as
+  the named replacement. It stays in the registry until then.
+
 ## [0.4.1] — 2026-05-26
 
 ### Changed (orchestrator-visible)

@@ -24,15 +24,23 @@ from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
 
-# OpenAI public pricing, USD per 1M tokens (as of 2026-05).
+# OpenAI public pricing, USD per 1M tokens (as of 2026-09).
 # https://developers.openai.com/api/docs/pricing
-# Note for gpt-5.5: inputs exceeding 272K tokens cost 2x input /
-# 1.5x output for the session; we use the base rate here.
+# Note for the 1.05M-context models (gpt-5.5 and later): inputs
+# exceeding 272K tokens cost 2x input / 1.5x output for the whole
+# request; we use the short-context base rate here.
+# `gpt-5` resolves to the gpt-5-2025-08-07 snapshot, which OpenAI
+# has scheduled for shutdown on 2026-12-11 (named replacement:
+# `gpt-5.6-sol`).
 _PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o": (2.50, 10.00),
     "gpt-5": (1.25, 10.00),
     "gpt-5.1": (1.25, 10.00),
     "gpt-5.5": (5.00, 30.00),
+    "gpt-5.6-sol": (4.00, 20.00),
+    "gpt-6-astra": (10.00, 50.00),
+    "gpt-6.1-sol": (2.00, 10.00),
+    "gpt-6-luna": (0.10, 0.50),
 }
 
 # Per-model context windows (max input tokens). Source: each model's
@@ -42,6 +50,10 @@ _CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-5": 400_000,
     "gpt-5.1": 400_000,
     "gpt-5.5": 1_050_000,
+    "gpt-5.6-sol": 1_050_000,
+    "gpt-6-astra": 1_050_000,
+    "gpt-6.1-sol": 1_050_000,
+    "gpt-6-luna": 1_050_000,
 }
 
 DEFAULT_MODEL = "gpt-4o"

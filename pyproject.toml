@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roundtable"
-version = "0.4.1"
+version = "0.5.0"
 description = "MCP tool for multi-model deliberation. Claude consults a panel of other models, refines its own answer through iterative critique."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -25,10 +25,19 @@ classifiers = [
 dependencies = [
     # Provider clients
     "anthropic>=0.40",
-    "openai>=1.50",
+    # <3: openai 3.0 (2026-08-12) moved its transport from httpx to
+    # httpx2, which the respx-based unit tests cannot intercept, so
+    # they escape to the live API. Lift the cap once the provider
+    # tests are ported to an httpx2-aware mock (tracked in CHANGELOG
+    # 0.5.0 Notes).
+    "openai>=1.50,<3",
     "google-genai>=0.3",
     # MCP server
-    "mcp>=0.9",
+    # <2: mcp 2.0 removed the low-level `Server.list_tools()` /
+    # `call_tool()` decorator API this server is built on; a fresh
+    # resolve crashes at startup with AttributeError. Lift once the
+    # server is ported to the 2.x API (CHANGELOG 0.5.0 Notes).
+    "mcp>=0.9,<2",
     # Async HTTP for any direct-call providers
     "httpx>=0.27",
     # Config / env loading
@@ -56,6 +65,12 @@ exclude = ["tests*", "docs*", "scripts*", "mcpb*", "dist*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Pin the rule set explicitly. ruff 0.16 widened its defaults (B, SIM,
+# I, UP, ...) and uv.lock is gitignored, so CI resolves the newest ruff;
+# without this the lint step fails on code that has passed since v0.1.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

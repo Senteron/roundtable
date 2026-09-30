@@ -750,9 +750,37 @@ defaults. Three reasons:
    silently would invalidate them.
 
 Users who want newer models can override per-call via the
-`models` parameter: `models=["gpt-5.1",
-"gemini-3.1-pro-preview", "deepseek-reasoner"]`. The override
+`models` parameter: `models=["gpt-6.1-sol",
+"gemini-3.1-pro-preview", "deepseek-v4-pro"]`. The override
 mechanism is wired in v0.3.0; only the defaults are pinned.
+
+**v0.5.0 addendum (2026-09-29).** The registry was refreshed
+against each provider's live model list: OpenAI added the
+`gpt-5.6-sol` / `gpt-6-astra` / `gpt-6.1-sol` / `gpt-6-luna`
+overrides; DeepSeek added `deepseek-flash` and `deepseek-v4-pro`.
+DeepSeek removed the `deepseek-chat` and `deepseek-reasoner`
+names from its listing in July 2026 (both still answer and report
+`model: "deepseek-flash"`). Renaming the DeepSeek default to
+`deepseek-flash` was proposed on the grounds that it is "the same
+model", and an independent pre-commit review pointed out that same
+weights does not mean same inference mode. Measured 2026-09-29 on
+one identical prompt ("In one sentence, why is the sky blue?"):
+
+| Name | Served by | Reasoning tokens | Completion tokens |
+| --- | --- | --- | --- |
+| `deepseek-chat` | deepseek-flash | 0 | 25 |
+| `deepseek-reasoner` | deepseek-flash | 27 | 59 |
+| `deepseek-flash` | deepseek-flash | 78 | 113 |
+| `deepseek-v4-pro` | deepseek-v4-pro | 61 | 82 |
+
+`deepseek-chat` is the only name that runs non-thinking, which is
+what the v0.1 validation lineup ran. The default therefore stays
+on the alias; `deepseek-flash` and `deepseek-v4-pro` are
+override-only. The alias is a known fragility: if DeepSeek drops
+it, the seat returns `api_error` under N-1 tolerance and a patch
+release moves the default, at which point the re-validation below
+is due anyway. A real defaults bump (e.g. to `gpt-6.1-sol`) still
+requires that side-by-side re-validation.
 
 The right time to bump defaults is a later task: run a side-by-side
 comparison (same prompt, same framing, old vs. new lineup), look
