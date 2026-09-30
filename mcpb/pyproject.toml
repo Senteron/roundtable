@@ -22,13 +22,22 @@ requires-python = ">=3.11"
 # so providers/deepseek.py (P4) will use the `openai` SDK with a
 # custom base_url. No separate `deepseek` package.
 dependencies = [
-    "mcp>=0.9",
+    # <2: mcp 2.0 removed the low-level `Server.list_tools()` /
+    # `call_tool()` decorator API this server is built on; a fresh
+    # resolve crashes at startup with AttributeError. Lift once the
+    # server is ported to the 2.x API (CHANGELOG 0.5.0 Notes).
+    "mcp>=0.9,<2",
     "pydantic>=2.0",
     # Provider SDKs — required by P4. Included now so that when the
     # wiring PR flips _resolve_panel() to use real providers, the
     # bundle does not need a manifest_version bump or rebuild
     # discipline change.
-    "openai>=1.50",
+    # <3: openai 3.0 (2026-08-12) moved its transport from httpx to
+    # httpx2, which the respx-based unit tests cannot intercept, so
+    # they escape to the live API. Lift the cap once the provider
+    # tests are ported to an httpx2-aware mock (tracked in CHANGELOG
+    # 0.5.0 Notes).
+    "openai>=1.50,<3",
     "google-genai>=0.3",
     # Async HTTP transport used by some provider clients and by
     # FakeProvider's test fixtures.

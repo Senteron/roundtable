@@ -72,6 +72,24 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `uv.lock` is gitignored CI resolves the newest ruff, so the lint
   step started failing on unchanged code. No code changes.
 
+- **`openai` SDK capped at `<3`** in both `pyproject.toml` and
+  `mcpb/pyproject.toml`. openai 3.0 (2026-08-12) replaced its
+  `httpx` transport with `httpx2`; the respx-based provider unit
+  tests can no longer intercept it and were observed escaping to
+  the live OpenAI and DeepSeek endpoints in CI (10 failures, all
+  401s or "route not called"). The 2.x line is what every test and
+  live smoke in this release ran against. Porting the provider
+  tests to an httpx2-aware mock and lifting the cap is a follow-up.
+- **`mcp` SDK capped at `<2`** in both `pyproject.toml` and
+  `mcpb/pyproject.toml`. mcp 2.0 removed the low-level
+  `Server.list_tools()` / `call_tool()` decorator API the server is
+  built on; on a fresh resolve the process crashes at startup with
+  `AttributeError: 'Server' object has no attribute 'list_tools'`
+  (all 11 integration tests). Because the bundle resolves its
+  dependencies at install time, this also affected any fresh Claude
+  Desktop install of 0.4.x made after mcp 2.0 shipped. Porting to
+  the 2.x API and lifting the cap is a follow-up.
+
 ### Notes
 
 - `gpt-5` resolves to the `gpt-5-2025-08-07` snapshot, which OpenAI
