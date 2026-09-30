@@ -7,6 +7,35 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-29
+
+### Changed (no orchestrator-visible behavior change)
+
+- **`openai` SDK requirement moved from `>=1.50,<3` to `>=3,<4`** in
+  both `pyproject.toml` and `mcpb/pyproject.toml`. This closes the
+  first follow-up recorded in 0.5.0: the 3.x line's `httpx2`
+  transport is now what the unit tests exercise and what a fresh
+  bundle install resolves. The `<4` ceiling is deliberate — 3.0
+  swapped the transport on a fresh resolve without any code change
+  on our side; the next major gets taken on purpose.
+- **`OpenAIProvider` and `DeepSeekProvider` accept `http_client=`**,
+  an optional pre-built `httpx2.AsyncClient` passed straight to
+  `AsyncOpenAI`. Production leaves it `None`; the per-request
+  `timeout=` and `max_retries=0` contract is unchanged.
+
+### Fixed
+
+- **Provider unit tests no longer depend on `respx` intercepting the
+  openai SDK.** `tests/unit/test_providers/conftest.py` provides a
+  `mock_endpoint` fixture that scripts responses through an
+  `httpx2.MockTransport` injected via the new `http_client=` seam.
+  The ported tests also assert the request URL (so the DeepSeek
+  `base_url` wiring is covered) and the exact SDK exception class
+  for HTTP-500 and timeout paths. `test_google.py` keeps `respx`
+  because google-genai still uses `httpx`. `httpx2` is declared in
+  the `dev` extra for the direct import.
+
+
 ## [0.5.0] — 2026-09-29
 
 ### Added

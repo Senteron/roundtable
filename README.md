@@ -3,7 +3,7 @@
 An MCP tool for multi-model deliberation. Claude consults a panel of other
 models, then refines its own answer through iterative critique.
 
-**Status:** v0.5.0. Real OpenAI / Google / DeepSeek dispatch when
+**Status:** v0.5.1. Real OpenAI / Google / DeepSeek dispatch when
 the corresponding API key is configured; transparent fallback to a
 placeholder `FakeProvider` (with a clear stderr warning) for any
 provider whose key is missing, so the server boots and runs even

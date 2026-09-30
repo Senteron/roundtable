@@ -1,6 +1,6 @@
 [project]
 name = "roundtable-mcp-server"
-version = "0.5.0"
+version = "0.5.1"
 description = "MCP server bundled for Claude Desktop"
 requires-python = ">=3.11"
 
@@ -32,12 +32,12 @@ dependencies = [
     # wiring PR flips _resolve_panel() to use real providers, the
     # bundle does not need a manifest_version bump or rebuild
     # discipline change.
-    # <3: openai 3.0 (2026-08-12) moved its transport from httpx to
-    # httpx2, which the respx-based unit tests cannot intercept, so
-    # they escape to the live API. Lift the cap once the provider
-    # tests are ported to an httpx2-aware mock (tracked in CHANGELOG
-    # 0.5.0 Notes).
-    "openai>=1.50,<3",
+    # >=3: from 3.0 the SDK transport is httpx2, and the provider unit
+    # tests inject an httpx2 mock through the `http_client=` seam, so
+    # a 2.x client would not be what the tests exercise.
+    # <4: 3.0 swapped the transport under us; take the next major
+    # deliberately rather than on a fresh resolve.
+    "openai>=3,<4",
     "google-genai>=0.3",
     # Async HTTP transport used by some provider clients and by
     # FakeProvider's test fixtures.

@@ -3,7 +3,7 @@
 Calls the OpenAI Chat Completions API via the official `openai` SDK
 (`AsyncOpenAI`). Per-request timeout is honored via the SDK's
 `timeout=` keyword on `.chat.completions.create()`, which maps to the
-underlying `httpx` timeout. The dispatcher catches any exception this
+underlying `httpx2` timeout (openai>=3; 2.x used `httpx`). The dispatcher catches any exception this
 raises and converts it to a per-model error stub.
 
 API key is read from `OPENAI_API_KEY` at construction time; a missing
@@ -19,10 +19,14 @@ from __future__ import annotations
 
 import os
 import time
+from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
 from .base import ProviderResponse, looks_like_unresolved_placeholder
+
+if TYPE_CHECKING:
+    import httpx2
 
 # OpenAI public pricing, USD per 1M tokens (as of 2026-09).
 # https://developers.openai.com/api/docs/pricing
@@ -72,6 +76,7 @@ class OpenAIProvider:
         context_window_tokens: int = CONTEXT_WINDOW_TOKENS,
         api_key: str | None = None,
         base_url: str | None = None,
+        http_client: httpx2.AsyncClient | None = None,
     ) -> None:
         key = api_key if api_key is not None else os.environ.get(_ENV_KEY)
         if not key:
@@ -93,7 +98,16 @@ class OpenAIProvider:
         self._base_url = base_url
         # max_retries=0: the dispatcher owns retry policy (N-1 tolerance:
         # the next round re-attempts naturally; no retry inside a round).
-        self._client = AsyncOpenAI(api_key=key, base_url=base_url, max_retries=0)
+        # http_client: an optional pre-built httpx2.AsyncClient. Tests
+        # inject one with an httpx2.MockTransport so no request leaves
+        # the process; production leaves it None and the SDK builds
+        # its own. Per-request `timeout=` still applies either way.
+        self._client = AsyncOpenAI(
+            api_key=key,
+            base_url=base_url,
+            max_retries=0,
+            http_client=http_client,
+        )
 
     async def call(
         self,
