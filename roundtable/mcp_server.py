@@ -419,12 +419,28 @@ async def _call_tool(
     # CallToolResult with isError=True; under 2.x it becomes a
     # JSON-RPC error and the client raises. Keep the 1.x shape so
     # the orchestrator sees a tool result, not a protocol error.
+    #
+    # Only messages Roundtable composed itself (UnknownToolError) are
+    # echoed. Anything else is reported by exception class name only:
+    # a raw str(e) from a provider SDK or httpx can carry request
+    # bodies, headers, or URLs. The full traceback still goes to
+    # stderr via log.exception, which is where operators look.
     try:
         return await _round_tool(params.name, params.arguments)
+    except UnknownToolError as e:
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=str(e))],
+            is_error=True,
+        )
     except Exception as e:  # noqa: BLE001
         log.exception("roundtable_round handler raised")
         return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"{type(e).__name__}: {e}")],
+            content=[
+                types.TextContent(
+                    type="text",
+                    text=f"internal_error: {type(e).__name__} (details logged to server stderr)",
+                )
+            ],
             is_error=True,
         )
 
@@ -433,9 +449,14 @@ def _text_result(payload: str) -> types.CallToolResult:
     return types.CallToolResult(content=[types.TextContent(type="text", text=payload)])
 
 
+class UnknownToolError(ValueError):
+    """Raised for a call_tool name this server does not export. Its
+    message is composed here and is safe to return to the client."""
+
+
 async def _round_tool(name: str, arguments: dict[str, Any] | None) -> types.CallToolResult:
     if name != "roundtable_round":
-        raise ValueError(f"unknown tool: {name!r}")
+        raise UnknownToolError(f"unknown tool: {name!r}")
 
     try:
         inputs = RoundInput.model_validate(arguments or {})

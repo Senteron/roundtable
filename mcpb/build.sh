@@ -4,7 +4,7 @@
 # Usage:  ./mcpb/build.sh
 # Output: dist/roundtable-<version>.mcpb
 #
-# Requires Node.js (for `npx @anthropic-ai/mcpb pack`).
+# Requires Node.js (for `npx @anthropic-ai/mcpb@<pinned> pack`).
 #
 # This script also injects the TOOL_DESCRIPTION constant from
 # roundtable/mcp_server.py into the staged manifest. The runtime
@@ -90,7 +90,11 @@ mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/roundtable-${VERSION}.mcpb"
 
 echo "Packing $OUT"
-(cd "$BUILD" && npx -y @anthropic-ai/mcpb pack . "$OUT")
+# Pinned: an unpinned `npx -y` resolves whatever is newest on the
+# registry at build time, which is a supply-chain hole in the step that
+# produces the shipped artifact. Bump deliberately.
+MCPB_CLI_VERSION="2.1.2"
+(cd "$BUILD" && npx -y "@anthropic-ai/mcpb@${MCPB_CLI_VERSION}" pack . "$OUT")
 
 # Generate the sha256 alongside, using just the basename so the
 # sidecar is path-independent (works in CI, doesn't leak the
