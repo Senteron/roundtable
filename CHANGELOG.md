@@ -7,6 +7,46 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-07
+
+Hardening from an external security review of the source. No change
+to the tool schema or the framing prompt.
+
+### Changed
+
+- **Unexpected handler exceptions no longer echo `str(e)` to the MCP
+  client.** The catch-all in `_call_tool` now returns
+  `internal_error: <ExceptionClass> (details logged to server stderr)`
+  and keeps the full traceback on stderr. A raw provider-SDK or httpx
+  message can carry request bodies, headers, or URLs. The one message
+  Roundtable composes itself, `unknown tool: '<name>'`, is still
+  returned verbatim (new `UnknownToolError`).
+- **`ANTHROPIC_API_KEY` removed from the bundle manifest** (both the
+  `env` injection and the `user_config` field). The server has never
+  read it; injecting an unused secret into the process widened the
+  exposure for nothing. Existing Desktop installs keep working; the
+  field simply disappears from the install dialog.
+- **`python-dotenv` removed from runtime dependencies** in both
+  `pyproject.toml` files. It was declared but never imported; the
+  README already states that `.env` files are not read.
+- **`mcpb/build.sh` pins `@anthropic-ai/mcpb@2.1.2`** instead of
+  resolving the newest packer at build time.
+
+### Verified
+
+- `uv lock --upgrade && uv sync --extra dev` on 2026-10-07 followed by
+  `pip-audit` over the 196 resolved packages: no known
+  vulnerabilities. The lockfile stays untracked by policy, so this is
+  a point-in-time check, not a standing guarantee.
+
+### Not changed (deferred, needs a schema decision)
+
+- The review noted that `models`, `prior_answers`, `prior_failures`,
+  and `PriorAnswer.answer` have no upper bounds, so the 50k prompt cap
+  and 300s per-call timeout do not bound total fan-out or context
+  size. Adding bounds is a public-schema change and is gated on an
+  explicit decision per CLAUDE.md.
+
 ## [0.5.2] — 2026-09-29
 
 ### Changed (no orchestrator-visible behavior change)
