@@ -54,6 +54,18 @@ Decisions enforced by these models:
   itself, not just the default, was empirically too low. Default
   stays at 90s; the cap is a backstop the orchestrator can opt
   into when overriding to reasoning-class models.
+- v0.7: upper bounds on the three list fields and on
+  `PriorAnswer.answer`. A 2026-10 security review observed that the
+  50k prompt cap and 300s per-call cap bound one call, not the
+  round: an unbounded `models` list fans out to arbitrarily many
+  provider calls and unbounded `prior_answers` builds an arbitrarily
+  large framed prompt. Caps (`MAX_PANEL_MODELS`, `MAX_PRIOR_ENTRIES`,
+  `MAX_PRIOR_ANSWER_CHARS`) sit far above any legitimate round: the
+  registry has 14 names and a round produces at most one answer or
+  failure per panelist plus the orchestrator's draft. The answer cap
+  is a per-entry bound, not a context guard: 32 answers at 100k chars
+  is ~0.9M estimated tokens, which the D4 pre-dispatch check still
+  rejects for every model below a ~1M-token window.
 """
 
 from __future__ import annotations
@@ -63,6 +75,13 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# v0.7 upper bounds. Mirrored by hand in mcp_server.INPUT_SCHEMA
+# (maxItems / maxLength); tests/unit/test_schemas.py keeps them in sync.
+MAX_PANEL_MODELS = 16
+MAX_PRIOR_ENTRIES = 32
+MAX_PRIOR_ANSWER_CHARS = 100_000
 
 
 class Source(str, Enum):
@@ -84,7 +103,7 @@ class PriorAnswer(BaseModel):
     model: str = Field(min_length=1)
     source: Source
     round: int = Field(ge=0)
-    answer: str
+    answer: str = Field(max_length=MAX_PRIOR_ANSWER_CHARS)
 
 
 class PriorFailure(BaseModel):
@@ -108,9 +127,9 @@ class RoundInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str = Field(min_length=1, max_length=50_000)
-    prior_answers: list[PriorAnswer] | None = None
-    prior_failures: list[PriorFailure] | None = None
-    models: list[str] | None = None
+    prior_answers: list[PriorAnswer] | None = Field(default=None, max_length=MAX_PRIOR_ENTRIES)
+    prior_failures: list[PriorFailure] | None = Field(default=None, max_length=MAX_PRIOR_ENTRIES)
+    models: list[str] | None = Field(default=None, max_length=MAX_PANEL_MODELS)
     round: int | None = Field(default=None, ge=0)
     per_call_timeout_seconds: int = Field(default=90, ge=1, le=300)
 

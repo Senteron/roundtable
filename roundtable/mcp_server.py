@@ -33,6 +33,9 @@ from .providers.base import Provider
 from .providers.fake import FakeProvider
 from .schemas import (
     ErrorClass,
+    MAX_PANEL_MODELS,
+    MAX_PRIOR_ANSWER_CHARS,
+    MAX_PRIOR_ENTRIES,
     ModelError,
     ModelResponse,
     RoundInput,
@@ -109,6 +112,7 @@ INPUT_SCHEMA: dict[str, Any] = {
         },
         "prior_answers": {
             "type": ["array", "null"],
+            "maxItems": MAX_PRIOR_ENTRIES,
             "description": (
                 "Round 1+ only. Successful prior-round answers. Each "
                 "entry: model, source ('orchestrator'|'panelist'), "
@@ -123,7 +127,7 @@ INPUT_SCHEMA: dict[str, Any] = {
                         "enum": ["orchestrator", "panelist"],
                     },
                     "round": {"type": "integer", "minimum": 0},
-                    "answer": {"type": "string"},
+                    "answer": {"type": "string", "maxLength": MAX_PRIOR_ANSWER_CHARS},
                 },
                 "required": ["model", "source", "round", "answer"],
                 "additionalProperties": False,
@@ -131,6 +135,7 @@ INPUT_SCHEMA: dict[str, Any] = {
         },
         "prior_failures": {
             "type": ["array", "null"],
+            "maxItems": MAX_PRIOR_ENTRIES,
             "description": (
                 "Round 1+ only. Panelists that failed on the prior "
                 "round. Surfaced as UNAVAILABLE PARTICIPANTS in the "
@@ -168,6 +173,7 @@ INPUT_SCHEMA: dict[str, Any] = {
         "models": {
             "type": ["array", "null"],
             "minItems": 1,
+            "maxItems": MAX_PANEL_MODELS,
             "description": (
                 "Optional panel override. Omit or pass null to use "
                 "the default panel (resolved from configured API "
