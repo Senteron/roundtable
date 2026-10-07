@@ -53,11 +53,11 @@ No CLI, no web UI, no FastAPI.
 ```python
 {
     "prompt": str,                        # required, 1..50_000 chars
-    "prior_answers": list[dict] | None,   # optional; None for round 0
-    "prior_failures": list[dict] | None,  # optional; round 1+; D1
-    "models": list[str] | None,           # optional; default panel if None
+    "prior_answers": list[dict] | None,   # optional; None for round 0; ≤32 entries (v0.7)
+    "prior_failures": list[dict] | None,  # optional; round 1+; D1; ≤32 entries (v0.7)
+    "models": list[str] | None,           # optional; default panel if None; 1..16 names (v0.7)
     "round": int | None,                  # optional; informational only
-    "per_call_timeout_seconds": int       # optional; default 90, max 180
+    "per_call_timeout_seconds": int       # optional; default 90, max 300 (v0.4.1)
 }
 ```
 
@@ -70,7 +70,7 @@ Each entry in `prior_answers` has shape:
     "round": int,    # which round produced this answer (renamed from
                      # "version" per D3 to avoid collision with
                      # provider/model versioning)
-    "answer": str    # raw text, verbatim
+    "answer": str    # raw text, verbatim; ≤100_000 chars (v0.7)
 }
 ```
 
@@ -350,8 +350,9 @@ This is the only place where exceptions cross a layer boundary.
 Two layers (D6), enforced via `asyncio.wait_for` and provider SDK
 timeout parameters where available:
 
-- **Per-provider call**: default 90s, max 180s, configurable via
-  `per_call_timeout_seconds` on the tool input.
+- **Per-provider call**: default 90s, max 300s (raised from 180s in
+  v0.4.1), configurable via `per_call_timeout_seconds` on the tool
+  input.
 - **Whole-round** (the MCP-call wall clock): derived from per-call,
   not separately configurable in v0.1. The dispatcher gathers with
   `return_exceptions=True` so a slow model doesn't block a fast one
@@ -655,7 +656,10 @@ Things known to be unresolved, not blocking v0.1:
 
 - Whether `prior_answers` should be capped by token budget (some
   models have small context windows; a 4-round bundle of long answers
-  could exceed limits). v0.1 trusts the caller to manage this.
+  could exceed limits). v0.1 trusts the caller to manage this. v0.7
+  added count and per-answer character caps (§2.1) as abuse bounds;
+  a token-budget cap remains open and the D4 pre-dispatch check is
+  still what protects small windows.
 - Whether to add a separate `roundtable_critique` mode that asks panel
   members to critique a draft rather than produce their own answer.
   The voicemail and architecture tests suggest this is sometimes more

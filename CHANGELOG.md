@@ -7,6 +7,28 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-07
+
+Closes the one finding deferred from 0.6.0. Public input schema
+change (additive upper bounds); tool description and framing prompt
+unchanged.
+
+### Changed
+
+- **`RoundInput` gains upper bounds**: `models` ≤ 16 names,
+  `prior_answers` ≤ 32 entries, `prior_failures` ≤ 32 entries, and
+  `PriorAnswer.answer` ≤ 100,000 characters. Mirrored as
+  `maxItems` / `maxLength` in the advertised `inputSchema`. Before
+  this, the 50k prompt cap and 300s per-call cap bounded one provider
+  call but not the round: an unbounded `models` list fanned out to
+  arbitrarily many calls and unbounded `prior_answers` built an
+  arbitrarily large framed prompt. Over-cap input returns the usual
+  `invalid_input` payload. The caps sit well above any legitimate
+  round (14 registry names; one answer or failure per panelist per
+  round).
+- `docs/design.md` §2.1 contract block updated, including the stale
+  `per_call_timeout_seconds` max (180 → 300, shipped in 0.4.1).
+
 ## [0.6.0] — 2026-10-07
 
 Hardening from an external security review of the source. No change

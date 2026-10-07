@@ -11,6 +11,9 @@ import pytest
 from pydantic import ValidationError
 
 from roundtable.schemas import (
+    MAX_PANEL_MODELS,
+    MAX_PRIOR_ANSWER_CHARS,
+    MAX_PRIOR_ENTRIES,
     ErrorClass,
     ModelError,
     ModelResponse,
@@ -68,6 +71,47 @@ class TestRoundInput:
     def test_accepts_timeout_at_max(self) -> None:
         inp = RoundInput(prompt="hi", per_call_timeout_seconds=300)
         assert inp.per_call_timeout_seconds == 300
+
+    # v0.7 upper bounds: one call's caps did not bound the round.
+    def test_models_at_cap_accepted_and_cap_plus_one_rejected(self) -> None:
+        names = [f"m{i}" for i in range(MAX_PANEL_MODELS)]
+        assert len(RoundInput(prompt="hi", models=names).models or []) == MAX_PANEL_MODELS
+        with pytest.raises(ValidationError):
+            RoundInput(prompt="hi", models=names + ["one-more"])
+
+    def test_json_string_models_also_bounded(self) -> None:
+        import json as _json
+
+        too_many = _json.dumps([f"m{i}" for i in range(MAX_PANEL_MODELS + 1)])
+        with pytest.raises(ValidationError):
+            RoundInput(prompt="hi", models=too_many)
+
+    def test_prior_answers_at_cap_accepted_and_cap_plus_one_rejected(self) -> None:
+        def entry(i: int) -> PriorAnswer:
+            return PriorAnswer(model=f"m{i}", source=Source.PANELIST, round=0, answer="a")
+
+        ok = [entry(i) for i in range(MAX_PRIOR_ENTRIES)]
+        assert len(RoundInput(prompt="hi", prior_answers=ok).prior_answers or []) == MAX_PRIOR_ENTRIES
+        with pytest.raises(ValidationError):
+            RoundInput(prompt="hi", prior_answers=ok + [entry(MAX_PRIOR_ENTRIES)])
+
+    def test_prior_failures_at_cap_accepted_and_cap_plus_one_rejected(self) -> None:
+        def entry(i: int) -> PriorFailure:
+            return PriorFailure(
+                model=f"m{i}", source=Source.PANELIST, round=0, error_class=ErrorClass.TIMEOUT
+            )
+
+        ok = [entry(i) for i in range(MAX_PRIOR_ENTRIES)]
+        assert len(RoundInput(prompt="hi", prior_failures=ok).prior_failures or []) == MAX_PRIOR_ENTRIES
+        with pytest.raises(ValidationError):
+            RoundInput(prompt="hi", prior_failures=ok + [entry(MAX_PRIOR_ENTRIES)])
+
+    def test_prior_answer_text_bounded(self) -> None:
+        PriorAnswer(model="m", source=Source.PANELIST, round=0, answer="x" * MAX_PRIOR_ANSWER_CHARS)
+        with pytest.raises(ValidationError):
+            PriorAnswer(
+                model="m", source=Source.PANELIST, round=0, answer="x" * (MAX_PRIOR_ANSWER_CHARS + 1)
+            )
 
     def test_rejects_extra_fields(self) -> None:
         with pytest.raises(ValidationError):
@@ -166,6 +210,24 @@ class TestJsonSchemaEnumSync:
                 ]["source"]["enum"]
             )
             assert jsonschema_values == {s.value for s in Source}
+
+
+class TestJsonSchemaBoundsSync:
+    """INPUT_SCHEMA hand-mirrors the v0.7 caps; keep the two in step."""
+
+    def test_list_caps_match(self) -> None:
+        from roundtable.mcp_server import INPUT_SCHEMA
+
+        props = INPUT_SCHEMA["properties"]
+        assert props["models"]["maxItems"] == MAX_PANEL_MODELS
+        assert props["prior_answers"]["maxItems"] == MAX_PRIOR_ENTRIES
+        assert props["prior_failures"]["maxItems"] == MAX_PRIOR_ENTRIES
+
+    def test_answer_cap_matches(self) -> None:
+        from roundtable.mcp_server import INPUT_SCHEMA
+
+        answer = INPUT_SCHEMA["properties"]["prior_answers"]["items"]["properties"]["answer"]
+        assert answer["maxLength"] == MAX_PRIOR_ANSWER_CHARS
 
 
 class TestRoundOutput:
